@@ -102,7 +102,7 @@ flowchart TD
 - **Core Language:** Python 3.10+ (tested on Python 3.11, 3.12, 3.14).
 - **Backend Framework:** FastAPI & Uvicorn (local REST API).
 - **Frontend Workbench:** Vanilla HTML5, CSS3, JavaScript (no external npm dependencies or CDN CDNs required).
-- **Testing Framework:** pytest (33 automated unit & integration tests, 100% passing).
+- **Testing Framework:** pytest (37 automated unit & integration tests, 100% passing).
 - **Environment:** Docker Compose (hardened non-root containers) with fallback to Local-First POSIX DAC Sandbox.
 - **Evidence Storage:** JSON Lines (JSONL) with canonical lexicographical serialization.
 - **Cryptographic Hashing:** Canonical SHA-256 hash chaining linked to a documented 64-zero genesis block.
@@ -193,11 +193,11 @@ BREACHLINE/
 pip install -r requirements.txt
 ```
 
-### Step 2: Run Automated Test Suite (33 Tests)
+### Step 2: Run Automated Test Suite (37 Tests)
 ```bash
 python3 -m pytest tests/ -v
 ```
-*(All 33 unit and integration tests execute and pass in ~0.35s)*
+*(All 37 unit and integration tests execute and pass in ~0.36s)*
 
 ### Step 3: Run the 90-Second Complete Demonstration
 ```bash
