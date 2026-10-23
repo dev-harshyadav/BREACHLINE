@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# BREACHLINE CLI Executable Wrapper
+PYTHONPATH="." python3 -m src.cli "$@"

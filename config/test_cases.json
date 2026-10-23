@@ -1,0 +1,38 @@
+[
+  {
+    "test_id": "T1",
+    "test_description": "Red worker reads its own permitted secret file",
+    "role": "red-worker",
+    "operation": "file:read",
+    "target_path": "/data/red/red_secret.txt",
+    "expected_outcome": "ALLOW",
+    "is_negative_control": false
+  },
+  {
+    "test_id": "T2",
+    "test_description": "Red worker attempts cross-boundary read of protected blue secret file",
+    "role": "red-worker",
+    "operation": "file:read",
+    "target_path": "/data/blue/blue_secret.txt",
+    "expected_outcome": "DENY",
+    "is_negative_control": false
+  },
+  {
+    "test_id": "T3",
+    "test_description": "Blue worker reads its own permitted secret file",
+    "role": "blue-worker",
+    "operation": "file:read",
+    "target_path": "/data/blue/blue_secret.txt",
+    "expected_outcome": "ALLOW",
+    "is_negative_control": false
+  },
+  {
+    "test_id": "T4",
+    "test_description": "Negative Control: Red worker accesses leaky fixture (simulated DAC misconfiguration)",
+    "role": "red-worker",
+    "operation": "file:read",
+    "target_path": "/data/leaky/blue_leaked.txt",
+    "expected_outcome": "DENY",
+    "is_negative_control": true
+  }
+]

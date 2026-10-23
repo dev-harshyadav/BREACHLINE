@@ -1,0 +1,94 @@
+services:
+  fixture-init:
+    image: alpine:latest
+    container_name: breachline-fixture-init
+    volumes:
+      - ./fixtures:/fixtures:ro
+      - breachline-fixture-vol:/data
+    command: >
+      sh -c "
+        rm -rf /data/* &&
+        mkdir -p /data/red /data/blue /data/leaky &&
+        cp /fixtures/red/red_secret.txt /data/red/ &&
+        cp /fixtures/blue/blue_secret.txt /data/blue/ &&
+        cp /fixtures/leaky/blue_leaked.txt /data/leaky/ &&
+        chown -R 1001:1001 /data/red &&
+        chmod 700 /data/red &&
+        chmod 600 /data/red/red_secret.txt &&
+        chown -R 1002:1002 /data/blue &&
+        chmod 700 /data/blue &&
+        chmod 600 /data/blue/blue_secret.txt &&
+        chown -R 1002:1002 /data/leaky &&
+        chmod 755 /data/leaky &&
+        chmod 644 /data/leaky/blue_leaked.txt &&
+        echo 'Fixtures successfully initialized with POSIX DAC permissions.'
+      "
+
+  red-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.red
+    image: breachline-red:latest
+    container_name: breachline-red-worker
+    depends_on:
+      fixture-init:
+        condition: service_completed_successfully
+    ports:
+      - "8081:8080"
+    user: "1001:1001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - breachline-fixture-vol:/data:ro
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+  blue-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.blue
+    image: breachline-blue:latest
+    container_name: breachline-blue-worker
+    depends_on:
+      fixture-init:
+        condition: service_completed_successfully
+    ports:
+      - "8082:8080"
+    user: "1002:1002"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - breachline-fixture-vol:/data:ro
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    image: breachline-runner:latest
+    container_name: breachline-test-runner
+    depends_on:
+      red-worker:
+        condition: service_started
+      blue-worker:
+        condition: service_started
+    volumes:
+      - ./output:/app/output
+      - ./config:/app/config:ro
+    environment:
+      - RUNNER_IN_DOCKER=1
+      - RED_WORKER_URL=http://red-worker:8080
+      - BLUE_WORKER_URL=http://blue-worker:8080
+
+volumes:
+  breachline-fixture-vol:
+    name: breachline-fixture-vol

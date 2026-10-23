@@ -1,0 +1,272 @@
+"""Unified Command-Line Interface for BREACHLINE.
+
+Provides intuitive commands for running tests, verifying evidence,
+running the tampering demonstration, serving the workbench, and checking status.
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+
+from src.models import GENESIS_HASH
+from src.report import generate_report
+from src.runner import TestRunner, check_docker_environment
+from src.storage import compare_runs, get_latest_run, load_runs_index
+from src.tamper import EvidenceTamperLab
+from src.verifier import EvidenceVerifier
+
+
+def cmd_run(args):
+    """Execute boundary test scenarios."""
+    mode = getattr(args, "mode", "auto")
+    config = getattr(args, "config", "config/test_cases.json")
+    print(f"[BREACHLINE] Starting boundary evaluation in mode '{mode}' with config '{config}'...")
+    runner = TestRunner(config_path=config, mode=mode)
+    summary = runner.run_all(verify_workers=False)
+    # Generate reports
+    generate_report(evidence_path=str(runner.evidence_path))
+    sys.exit(0 if summary["failed"] == 1 and any(r.get("expected_outcome") == "DENY" and r.get("actual_outcome") == "ALLOW" for r in summary["records"]) else (0 if summary["failed"] == 0 else 1))
+
+
+def cmd_demo(args):
+    """Execute standard 90-second automated demo."""
+    print("========================================================")
+    print("  BREACHLINE — 90-SECOND HACKATHON DEMO EXECUTION")
+    print("========================================================")
+    runner = TestRunner(config_path="config/test_cases.json", mode="auto")
+    summary = runner.run_all(verify_workers=False)
+    
+    print("\n[STEP 2] Running Independent Evidence Verifier:")
+    v_res = EvidenceVerifier.verify_file(str(runner.evidence_path))
+    print(f"  Verification Result: {'PASS (VALID)' if v_res.is_valid else 'FAIL'}")
+    print(f"  Total Records:       {v_res.total_records}")
+
+    print("\n[STEP 3] Generating Multi-Format Reports:")
+    rep = generate_report(evidence_path=str(runner.evidence_path))
+    print("  Generated: output/report.txt, output/report.json, output/report.html")
+
+    print("\n[STEP 4] Running Evidence Tampering Laboratory:")
+    lab = EvidenceTamperLab(str(runner.evidence_path))
+    lab_results = lab.run_all_attacks()
+    for r in lab_results:
+        tag = "[DETECTED]" if r.detected_as_tampered else "[LIMITATION CONFIRMED]"
+        print(f"  {r.attack_id}: {r.attack_name:<42} -> {tag}")
+
+    print("\n========================================================")
+    print("  DEMO COMPLETE. Run 'breachline serve' to open the UI.")
+    print("========================================================\n")
+
+
+def cmd_verify(args):
+    """Verify an evidence log file."""
+    evidence_path = args.evidence or "output/evidence.jsonl"
+    print(f"[BREACHLINE VERIFIER] Inspecting evidence file: {evidence_path}")
+    result = EvidenceVerifier.verify_file(evidence_path)
+
+    if result.is_valid:
+        print(f"\033[92m[PASS] Cryptographic chain verified ({result.total_records} records).\033[0m")
+        print("  - All canonical payloads match their SHA-256 record hashes.")
+        print("  - Sequence ordering and genesis links intact.")
+        sys.exit(0)
+    else:
+        print(f"\033[91m[FAIL] Verification error detected at record {result.first_error_index}!\033[0m")
+        print(f"  Error Type: {result.error_type}")
+        print(f"  Reason:     {result.error_message}")
+        if result.details:
+            print(f"  Details:    {result.details}")
+        sys.exit(1)
+
+
+def cmd_tamper(args):
+    """Run evidence tampering experiments."""
+    lab = EvidenceTamperLab()
+    attack = getattr(args, "attack", "all").upper()
+    print("========================================================")
+    print("  BREACHLINE EVIDENCE TAMPERING LABORATORY")
+    print("========================================================")
+    print("Executing disposable tampering experiments in output/tamper_scratch/...\n")
+
+    if attack == "ALL":
+        results = lab.run_all_attacks()
+    else:
+        attack_map = {
+            "1": lab.attack_1_field_modification,
+            "2": lab.attack_2_record_deletion,
+            "3": lab.attack_3_record_reordering,
+            "4": lab.attack_4_broken_hash_link,
+            "5": lab.attack_5_full_chain_rewrite,
+            "ATTACK_1": lab.attack_1_field_modification,
+            "ATTACK_2": lab.attack_2_record_deletion,
+            "ATTACK_3": lab.attack_3_record_reordering,
+            "ATTACK_4": lab.attack_4_broken_hash_link,
+            "ATTACK_5": lab.attack_5_full_chain_rewrite,
+        }
+        fn = attack_map.get(attack)
+        if not fn:
+            print(f"[ERROR] Unknown attack '{attack}'. Choose 1, 2, 3, 4, 5, or ALL.")
+            sys.exit(1)
+        results = [fn()]
+
+    for r in results:
+        status_badge = "\033[92m[DETECTED]\033[0m" if r.detected_as_tampered else "\033[93m[LIMITATION CONFIRMED]\033[0m"
+        print(f"{r.attack_id}: {r.attack_name} -> {status_badge}")
+        print(f"  Transformation: {r.transformation_applied}")
+        print(f"  Explanation:    {r.explanation}")
+        print(f"  Architecture:   {r.architectural_note}\n")
+
+
+def cmd_report(args):
+    """Generate reports from evidence log."""
+    ev_path = args.evidence or "output/evidence.jsonl"
+    print(f"[BREACHLINE REPORT] Generating reports from {ev_path}...")
+    try:
+        data = generate_report(evidence_path=ev_path)
+        print("  - Machine-readable JSON: output/report.json")
+        print("  - Human-readable TXT:    output/report.txt")
+        print("  - Standalone HTML:       output/report.html")
+        print(f"  Policy: {data['passed_tests']} PASS, {data['failed_tests']} FAIL. Evidence: {data['evidence_verification']['status']}.")
+    except Exception as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_compare(args):
+    """Compare two execution runs."""
+    try:
+        diff = compare_runs(args.run_a, args.run_b)
+        print("========================================================")
+        print(f"  BREACHLINE RUN COMPARISON: {args.run_a[:8]} vs {args.run_b[:8]}")
+        print("========================================================")
+        print(f"Differences Detected: {diff['differences_count']}")
+        print(f"Configurations Identical: {diff['config_identical']}")
+        print("-" * 65)
+        for tc in diff["test_comparisons"]:
+            print(f"Test {tc['test_id']:<6} | Status: {tc['status_change']:<15} | A: {tc['run_a']['result'] if tc['run_a'] else '-'} | B: {tc['run_b']['result'] if tc['run_b'] else '-'}")
+        print("========================================================")
+    except Exception as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_status(args):
+    """Check environment, Docker status, and run history."""
+    docker_status = check_docker_environment()
+    runs = load_runs_index()
+    print("========================================================")
+    print("  BREACHLINE SYSTEM DIAGNOSTICS")
+    print("========================================================")
+    print(f"Python Runtime:    {sys.version.split()[0]}")
+    print(f"Docker Status:     {'CONNECTED' if docker_status['available'] else 'OFFLINE / UNAVAILABLE'}")
+    print(f"Diagnostic Notice: {docker_status['message']}")
+    print(f"Total Stored Runs: {len(runs)}")
+    if runs:
+        latest = runs[0]
+        print(f"Latest Run ID:     {latest['run_id']}")
+        print(f"Latest Mode:       {latest.get('execution_mode')}")
+        print(f"Evidence Chain:    {latest.get('evidence_integrity', {}).get('is_valid')}")
+    print("========================================================")
+
+
+def is_port_in_use(host: str, port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+            return False
+        except OSError:
+            return True
+
+
+def cmd_serve(args):
+    """Start the BREACHLINE web workbench server."""
+    import uvicorn
+    host = getattr(args, "host", "127.0.0.1")
+    port = getattr(args, "port", 8000)
+
+    if is_port_in_use(host, port):
+        print("========================================================", file=sys.stderr)
+        print(f"[PORT CONFLICT] Port {port} on {host} is already in use by another process.", file=sys.stderr)
+        print(f"To identify which process is listening on port {port}, run:", file=sys.stderr)
+        print(f"  lsof -i :{port}", file=sys.stderr)
+        print("\nBREACHLINE does not terminate unrelated user processes.", file=sys.stderr)
+        print("To launch the BREACHLINE Security Workbench on another port, use:", file=sys.stderr)
+        alt_port = 8008 if port == 8000 else port + 1
+        print(f"  ./breachline serve --port {alt_port}", file=sys.stderr)
+        print("========================================================", file=sys.stderr)
+        sys.exit(1)
+
+    print("========================================================")
+    print(f"  BREACHLINE SECURITY WORKBENCH STARTING")
+    print(f"  URL: http://{host}:{port}")
+    print("========================================================")
+    uvicorn.run("src.server:app", host=host, port=port, log_level="info")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="breachline",
+        description="BREACHLINE: Evidence-Producing Boundary-Test Harness for AI Evaluation Sandboxes",
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
+
+    # run
+    p_run = subparsers.add_parser("run", help="Execute boundary tests")
+    p_run.add_argument(
+        "--mode",
+        choices=["auto", "docker", "local_os", "simulated", "local_sandbox", "demo"],
+        default="auto",
+        help="Execution mode (docker: Linux Kernel DAC, local_os: host POSIX DAC, simulated: app-level simulation)",
+    )
+    p_run.add_argument("--config", default="config/test_cases.json", help="Path to test cases JSON")
+
+    # demo
+    subparsers.add_parser("demo", help="Run 90-second automated demo")
+
+    # verify
+    p_verify = subparsers.add_parser("verify", help="Independently verify evidence file")
+    p_verify.add_argument("evidence", nargs="?", default="output/evidence.jsonl", help="Path to evidence.jsonl")
+
+    # tamper
+    p_tamper = subparsers.add_parser("tamper", help="Run tampering lab experiments")
+    p_tamper.add_argument("--attack", choices=["1", "2", "3", "4", "5", "all", "ALL"], default="all", help="Attack scenario")
+
+    # report
+    p_report = subparsers.add_parser("report", help="Generate HTML, JSON, and TXT reports")
+    p_report.add_argument("--evidence", default="output/evidence.jsonl", help="Path to evidence.jsonl")
+
+    # compare
+    p_compare = subparsers.add_parser("compare", help="Compare two run IDs")
+    p_compare.add_argument("run_a", help="Run ID A (Baseline)")
+    p_compare.add_argument("run_b", help="Run ID B (Comparison)")
+
+    # status
+    subparsers.add_parser("status", help="Show system status and diagnostics")
+
+    # serve
+    p_serve = subparsers.add_parser("serve", help="Start web workbench server")
+    p_serve.add_argument("--host", default="127.0.0.1", help="Host interface")
+    p_serve.add_argument("--port", type=int, default=8000, help="Port number")
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    dispatch = {
+        "run": cmd_run,
+        "demo": cmd_demo,
+        "verify": cmd_verify,
+        "tamper": cmd_tamper,
+        "report": cmd_report,
+        "compare": cmd_compare,
+        "status": cmd_status,
+        "serve": cmd_serve,
+    }
+    dispatch[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

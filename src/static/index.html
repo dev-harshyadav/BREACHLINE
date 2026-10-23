@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="Evidence-producing boundary testing for AI evaluation sandboxes.">
+  <title>BREACHLINE — Security Boundary Workbench</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="brand-shield" aria-label="BREACHLINE boundary mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 5h9v9H5zM18 5h9v22h-9zM5 18h9v9H5z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M14 9h4M14 23h4" stroke="#c481f3" stroke-width="2"/></svg></div>
+      <div class="brand-text">
+        <h1>BREACHLINE</h1>
+        <span>Sandbox Harness</span>
+      </div>
+    </div>
+
+    <ul class="nav-menu">
+      <li class="nav-item">
+        <a class="nav-link active" data-view="overview">
+          <span class="nav-icon">&#9638;</span> Overview
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="boundary-lab">
+          <span class="nav-icon">&#9874;</span> Boundary Lab
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="scenarios">
+          <span class="nav-icon">&#9776;</span> Test Scenarios
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="history">
+          <span class="nav-icon">&#128340;</span> Run History
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="inspector">
+          <span class="nav-icon">&#9888;</span> Violation Inspector
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="vault">
+          <span class="nav-icon">&#128274;</span> Evidence Vault
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="verification">
+          <span class="nav-icon">&#9989;</span> Integrity Verification
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="tamper-lab">
+          <span class="nav-icon">&#128293;</span> Tamper Lab
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="reports">
+          <span class="nav-icon">&#128196;</span> Reports
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-view="settings">
+          <span class="nav-icon">&#9881;</span> Settings &amp; Env
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div>Hack in Hills '26 &bull; Track 04</div>
+      <div>Team NovaCrew (Lead: Harsh)</div>
+      <div class="sidebar-status-tag" id="sidebar-env-badge">
+        <span class="dot-pulse"></span> <span id="sidebar-env-text">Loading...</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Wrapper -->
+  <div class="main-wrapper">
+    <!-- Top Header -->
+    <header class="top-header">
+      <div class="header-left">
+        <div class="page-title" id="current-view-title">Security Boundary Overview</div>
+        <div class="env-pill" id="header-mode-pill">
+          <span class="dot-pulse"></span> <span id="header-mode-text">Local POSIX Sandbox</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-secondary btn-sm" id="btn-refresh-status" title="Refresh state">
+          &#8635; Refresh
+        </button>
+        <button class="btn btn-primary" id="btn-run-suite">
+          &#9654; Run Boundary Tests
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Views Container -->
+    <main class="content-area">
+
+      <!-- ============================================================== -->
+      <!-- VIEW 1: OVERVIEW (SECURITY COMMAND CENTER)                     -->
+      <!-- ============================================================== -->
+      <section id="view-overview" class="view-section active">
+        <section class="boundary-hero" aria-label="BREACHLINE security boundary visualization">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="eyebrow-mark"></span> BOUNDARY ASSURANCE / SYSTEM 01</div>
+            <h1>Test the boundary.<br><span>Trust the evidence.</span></h1>
+            <p>Observe real access behavior, compare it against policy, and preserve every outcome in a verifiable evidence chain.</p>
+            <div class="hero-actions"><button class="btn btn-primary" id="hero-run-tests" type="button">Run boundary tests <span aria-hidden="true">↗</span></button><div class="hero-note"><span class="live-dot"></span> Evidence-led evaluation</div></div>
+          </div>
+          <div class="boundary-visual">
+            <div class="visual-topline"><span>BOUNDARY MAP</span><span>LIVE SYSTEM MODEL</span></div>
+            <svg class="boundary-svg" viewBox="0 0 520 260" role="img" aria-label="Actor attempts to reach a protected resource across a policy boundary">
+              <defs><linearGradient id="signalGradient" x1="0" x2="1"><stop offset="0" stop-color="#c481f3" stop-opacity=".15"/><stop offset=".5" stop-color="#c481f3"/><stop offset="1" stop-color="#ff78e1" stop-opacity=".2"/></linearGradient></defs>
+              <g stroke="#ffffff" stroke-opacity=".09" stroke-width="1"><path d="M0 40H520M0 80H520M0 120H520M0 160H520M0 200H520M40 0V260M80 0V260M120 0V260M160 0V260M200 0V260M240 0V260M280 0V260M320 0V260M360 0V260M400 0V260M440 0V260M480 0V260"/></g>
+              <rect x="18" y="76" width="112" height="104" rx="2" fill="#181818" stroke="#ffffff" stroke-opacity=".35"/>
+              <circle cx="74" cy="111" r="13" fill="none" stroke="#c0c0c0" stroke-width="1.5"/><path d="M50 150c3-18 45-18 48 0" fill="none" stroke="#c0c0c0" stroke-width="1.5"/>
+              <text x="74" y="199" fill="#c0c0c0" font-size="10" text-anchor="middle" letter-spacing="1.5">ACTOR</text>
+              <path d="M130 128H213" stroke="url(#signalGradient)" stroke-width="2" stroke-dasharray="5 7" class="signal-line"/>
+              <path d="M201 120l12 8-12 8" fill="none" stroke="#c481f3" stroke-width="1.5"/>
+              <rect x="222" y="26" width="76" height="208" fill="#c481f3" fill-opacity=".035" stroke="#c481f3" stroke-opacity=".7" stroke-dasharray="4 5"/>
+              <path d="M260 26V234" stroke="#c481f3" stroke-opacity=".7"/>
+              <text x="260" y="15" fill="#c481f3" font-size="9" text-anchor="middle" letter-spacing="1.3">POLICY BOUNDARY</text>
+              <circle cx="260" cy="128" r="13" fill="#000" stroke="#c481f3" stroke-width="1.5"/><path d="M254 128h12M260 122v12" stroke="#c481f3" stroke-width="1.5"/>
+              <path d="M298 128H374" stroke="#ffffff" stroke-opacity=".2" stroke-width="1.5" stroke-dasharray="3 6"/>
+              <rect x="374" y="76" width="128" height="104" rx="2" fill="#181818" stroke="#ffffff" stroke-opacity=".35"/>
+              <path d="M426 116v-7a12 12 0 0 1 24 0v7M422 116h32v23h-32z" fill="none" stroke="#c481f3" stroke-width="1.5"/>
+              <text x="438" y="199" fill="#c0c0c0" font-size="10" text-anchor="middle" letter-spacing="1.2">PROTECTED RESOURCE</text>
+              <circle cx="173" cy="128" r="3" fill="#ff78e1" class="signal-pulse"/><text x="173" y="111" fill="#ff78e1" font-size="9" text-anchor="middle">REQUEST</text>
+              <text x="260" y="251" fill="#777" font-size="9" text-anchor="middle" letter-spacing="1.4">OUTCOME IS MEASURED — NEVER ASSUMED</text>
+            </svg>
+            <div class="visual-legend"><span><i class="legend-dot violet"></i> Policy checkpoint</span><span><i class="legend-dot muted"></i> Protected surface</span><span class="mono">SHA-256 / JSONL</span></div>
+          </div>
+        </section>
+        <div class="workflow-strip" aria-label="Execution workflow"><span>CONFIGURE</span><b>→</b><span>EXECUTE</span><b>→</b><span>OBSERVE</span><b>→</b><span>COMPARE</span><b>→</b><span>RECORD</span><b>→</b><span>VERIFY</span></div>
+        
+        <div class="callout-box callout-info">
+          <div>
+            <strong>Core Operating Principle:</strong> Don't just claim isolation. Test the boundary. Verify the evidence.
+            <div style="font-size:0.8rem; margin-top:0.25rem;">
+              The operating system and container runtime enforce access controls. BREACHLINE stimulates configured boundaries,
+              evaluates policy outcomes (PASS/FAIL), and seals audit records in an independently verifiable SHA-256 hash chain (VALID/INVALID).
+            </div>
+          </div>
+        </div>
+
+        <!-- 10 Required KPI Cards -->
+        <div class="grid-cards">
+          <div class="stat-card">
+            <div class="stat-label">Total Test Runs</div>
+            <div class="stat-value mono text-cyan" id="kpi-total-runs">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Boundary Cases Executed</div>
+            <div class="stat-value mono" id="kpi-cases-executed">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Policy Matches (PASS)</div>
+            <div class="stat-value mono text-green" id="kpi-policy-matches">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Policy Mismatches (FAIL)</div>
+            <div class="stat-value mono text-red" id="kpi-policy-mismatches">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Unexpected Access (DENY&rarr;ALLOW)</div>
+            <div class="stat-value mono text-amber" id="kpi-unexpected-access">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Verified Chains (VALID)</div>
+            <div class="stat-value mono text-green" id="kpi-verified-chains">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Invalid Chains (TAMPERED)</div>
+            <div class="stat-value mono text-red" id="kpi-invalid-chains">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Most Recent Run</div>
+            <div class="stat-value mono text-muted" style="font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis;" id="kpi-recent-run">None</div>
+          </div>
+        </div>
+
+        <!-- Active Run Results & Summary -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Latest Boundary Evaluation Results</div>
+            <div id="latest-run-badges"></div>
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="table-overview-results">
+              <thead>
+                <tr>
+                  <th>Test ID</th>
+                  <th>Scenario Description</th>
+                  <th>Worker Role</th>
+                  <th>Operation</th>
+                  <th>Expected</th>
+                  <th>Observed</th>
+                  <th>Policy Result</th>
+                  <th>Integrity Check</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-overview-results">
+                <tr><td colspan="8" class="text-muted" style="text-align:center;">No test execution recorded yet. Click "Run Boundary Tests".</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Evidence Integrity Card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Evidence Chain Cryptographic Status</div>
+            <button class="btn btn-secondary btn-sm" id="btn-quick-verify">Re-verify Cryptographic Links</button>
+          </div>
+          <div id="overview-verification-box" style="background:var(--bg-input); padding:1rem; border-radius:var(--radius-md); font-family:var(--font-mono); font-size:0.85rem;">
+            Loading evidence status...
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 2: BOUNDARY LAB                                           -->
+      <!-- ============================================================== -->
+      <section id="view-boundary-lab" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Interactive Boundary Testing Laboratory</div>
+            <span class="badge badge-info">Sandbox Configurator</span>
+          </div>
+          <p style="color:var(--text-secondary); margin-bottom:1.25rem;">
+            Configure individual worker identities, target resources, and permission expectations.
+            The engine executes operations against actual POSIX DAC permissions and prevents path escape.
+          </p>
+
+          <form id="form-boundary-probe">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.25rem;">
+              <div class="form-group">
+                <label class="form-label">Worker Identity &amp; Role</label>
+                <select class="form-control" id="probe-worker">
+                  <option value="red-worker">red-worker (UID 1001, GID 1001 — Red Tenant)</option>
+                  <option value="blue-worker">blue-worker (UID 1002, GID 1002 — Blue Tenant)</option>
+                  <option value="eval-monitor">eval-monitor (UID 1000, GID 1000 — Evaluation Monitor)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Operation Type</label>
+                <select class="form-control" id="probe-operation">
+                  <option value="file:read">file:read (Read target file content)</option>
+                  <option value="file:stat">file:stat (Inspect POSIX metadata and mode)</option>
+                  <option value="dir:list">dir:list (Enumerate directory contents)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:1.25rem;">
+              <div class="form-group">
+                <label class="form-label">Target Resource Path (Strictly bounded to /data/)</label>
+                <select class="form-control" id="probe-path">
+                  <option value="/data/red/red_secret.txt">/data/red/red_secret.txt (Owner: 1001, Mode: 0600)</option>
+                  <option value="/data/blue/blue_secret.txt">/data/blue/blue_secret.txt (Owner: 1002, Mode: 0600)</option>
+                  <option value="/data/leaky/blue_leaked.txt">/data/leaky/blue_leaked.txt (Owner: 1002, Mode: 0644 — Negative Control)</option>
+                  <option value="/data/shared/dataset.csv">/data/shared/dataset.csv (Owner: 1000, Mode: 0640)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Expected Outcome Policy</label>
+                <select class="form-control" id="probe-expected">
+                  <option value="DENY">DENY (Expect Access Prohibited)</option>
+                  <option value="ALLOW">ALLOW (Expect Access Permitted)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem;">
+              <div class="text-muted" style="font-size:0.8rem;">
+                Protected by strict path traversal validation. Relative jumps (<code>..</code>) and null-bytes are blocked.
+              </div>
+              <button type="submit" class="btn btn-primary" id="btn-submit-probe">
+                &#9889; Dispatch Probe
+              </button>
+            </div>
+          </form>
+
+          <div id="probe-result-container" style="margin-top:1.5rem; display:none;">
+            <div class="card-title" style="font-size:0.9rem; margin-bottom:0.5rem;">Probe Observation:</div>
+            <pre class="code-block" id="probe-result-output"></pre>
+          </div>
+        </div>
+
+        <!-- Known Fixtures & Access Matrix -->
+        <div class="card">
+          <div class="card-title">Configured Sandbox Fixture Matrix</div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Resource ID</th>
+                <th>Filesystem Path</th>
+                <th>Owner Identity</th>
+                <th>POSIX Mode</th>
+                <th>Security Purpose</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-lab-fixtures">
+              <!-- Populated dynamically from API -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 3: TEST SCENARIOS                                         -->
+      <!-- ============================================================== -->
+      <section id="view-scenarios" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Configured Boundary Test Suite</div>
+            <button class="btn btn-primary btn-sm" onclick="triggerRun('auto')">&#9654; Execute Suite</button>
+          </div>
+          <p style="color:var(--text-secondary); margin-bottom:1rem;">
+            Test scenarios stimulate the environment to confirm both permitted operations and isolation barriers.
+            Test T4 represents a deliberate negative control fixture to prove the harness catches boundary misconfigurations.
+          </p>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Worker Role</th>
+                <th>Target Path</th>
+                <th>Expected</th>
+                <th>Negative Control?</th>
+                <th>Scenario Description</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-scenarios-list">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 4: RUN HISTORY & COMPARISON                               -->
+      <!-- ============================================================== -->
+      <section id="view-history" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Historical Execution Records</div>
+            <button class="btn btn-secondary btn-sm" id="btn-open-compare">
+              &#8644; Compare Two Runs
+            </button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Timestamp (UTC)</th>
+                <th>Mode</th>
+                <th>Total Tests</th>
+                <th>Policy Matches</th>
+                <th>Mismatches</th>
+                <th>Evidence Chain</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-run-history">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Comparison Container -->
+        <div class="card" id="card-comparison-results" style="display:none;">
+          <div class="card-header">
+            <div class="card-title">Run Comparison Diff</div>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('card-comparison-results').style.display='none'">Close Diff</button>
+          </div>
+          <div id="comparison-diff-output"></div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 5: VIOLATION INSPECTOR                                    -->
+      <!-- ============================================================== -->
+      <section id="view-inspector" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Policy Mismatch &amp; Unexpected Access Inspector</div>
+            <span class="badge badge-fail" id="inspector-count-badge">0 Findings</span>
+          </div>
+          <p style="color:var(--text-secondary); margin-bottom:1.25rem;">
+            A policy failure occurs whenever the actual observed operating system access outcome differs from
+            the configured security policy. For each mismatch, this inspector provides technical explanations,
+            distinguishes intentional negative controls, and suggests diagnostic remediation steps.
+          </p>
+
+          <div id="inspector-findings-list">
+            <!-- Dynamically populated finding cards -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 6: EVIDENCE VAULT                                         -->
+      <!-- ============================================================== -->
+      <section id="view-vault" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Cryptographic Evidence Vault</div>
+            <div style="display:flex; gap:0.5rem;">
+              <button class="btn btn-secondary btn-sm" id="btn-export-jsonl">&#128190; Export JSONL</button>
+              <button class="btn btn-secondary btn-sm" id="btn-export-json">&#128190; Export JSON</button>
+            </div>
+          </div>
+          <p style="color:var(--text-secondary); margin-bottom:1rem;">
+            Every observation is canonically formatted, hashed with SHA-256, and chained to its predecessor.
+            Hover over hashes to inspect full 64-character hex digests.
+          </p>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Seq</th>
+                  <th>Test ID</th>
+                  <th>Role</th>
+                  <th>Operation</th>
+                  <th>Outcome</th>
+                  <th>Result</th>
+                  <th>Previous Record Hash</th>
+                  <th>Record Hash</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-evidence-records">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Canonical Record Serialization Inspector</div>
+          <p class="text-secondary" style="font-size:0.85rem; margin-bottom:0.75rem;">
+            Exact deterministic bytes hashed by the verifier (lexicographically sorted keys, compact separators, UTF-8):
+          </p>
+          <pre class="code-block" id="vault-json-preview">// Select a record to inspect canonical JSON payload</pre>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 7: INTEGRITY VERIFICATION                                 -->
+      <!-- ============================================================== -->
+      <section id="view-verification" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Independent Cryptographic Verifier</div>
+            <button class="btn btn-primary btn-sm" id="btn-run-full-verifier">&#128269; Execute Verification</button>
+          </div>
+          <p style="color:var(--text-secondary); margin-bottom:1.25rem;">
+            The independent verifier reads the evidence log from disk, parses records, validates schemas,
+            recalculates SHA-256 hashes from raw payloads, and checks the genesis-to-tip hash link continuity.
+          </p>
+
+          <div id="verifier-output-card" style="background:var(--bg-input); border-radius:var(--radius-md); padding:1.25rem; font-family:var(--font-mono); font-size:0.88rem; margin-bottom:1.5rem;">
+            Click "Execute Verification" to inspect the evidence chain.
+          </div>
+
+          <div class="chain-flow" id="chain-visual-flow">
+            <!-- Visual hash chain nodes -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 8: EVIDENCE INTEGRITY LAB (TAMPERING DEMO)                -->
+      <!-- ============================================================== -->
+      <section id="view-tamper-lab" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Evidence Tampering Laboratory</div>
+            <span class="badge badge-warn">Safe Disposable Simulations</span>
+          </div>
+          <div class="callout-box callout-warn">
+            <div>
+              <strong>Safe Experimentation Notice:</strong> All tampering attacks are conducted exclusively on temporary,
+              disposable copies in <code>output/tamper_scratch/</code>. Original evidence files are never modified.
+            </div>
+          </div>
+          <p style="color:var(--text-secondary); margin-bottom:1.5rem;">
+            Test the verifier's mathematical detection capabilities across 5 distinct attack vectors, including
+            the documented limitation of chain-only verification under a full rewrite.
+          </p>
+
+          <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.5rem;">
+            <button class="btn btn-secondary" onclick="runTamperAttack('ATTACK_1')">
+              Attack 1: Modify Field (Cover-up)
+            </button>
+            <button class="btn btn-secondary" onclick="runTamperAttack('ATTACK_2')">
+              Attack 2: Delete Record (Erasure)
+            </button>
+            <button class="btn btn-secondary" onclick="runTamperAttack('ATTACK_3')">
+              Attack 3: Reorder Records (Timeline)
+            </button>
+            <button class="btn btn-secondary" onclick="runTamperAttack('ATTACK_4')">
+              Attack 4: Corrupt Hash Link
+            </button>
+            <button class="btn btn-secondary" onclick="runTamperAttack('ATTACK_5')">
+              Attack 5: Full-Chain Rewrite (Limitation)
+            </button>
+            <button class="btn btn-primary" onclick="runTamperAttack('ALL')">
+              &#9889; Run All 5 Attacks
+            </button>
+          </div>
+
+          <div id="tamper-results-container">
+            <!-- Tamper experiment results injected here -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 9: REPORTS                                                -->
+      <!-- ============================================================== -->
+      <section id="view-reports" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Audit Report Center</div>
+            <div style="display:flex; gap:0.5rem;">
+              <button class="btn btn-primary btn-sm" id="btn-print-report">&#128424; Print Report</button>
+              <button class="btn btn-secondary btn-sm" id="btn-download-html">&#11015; HTML</button>
+              <button class="btn btn-secondary btn-sm" id="btn-download-json">&#11015; JSON</button>
+              <button class="btn btn-secondary btn-sm" id="btn-download-txt">&#11015; TXT</button>
+            </div>
+          </div>
+          <div style="height: 600px; border: 1px solid var(--border-card); border-radius: var(--radius-md); overflow: hidden;">
+            <iframe id="report-iframe" style="width: 100%; height: 100%; border: none; background: #080d1a;"></iframe>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 10: SETTINGS & ENVIRONMENT                                -->
+      <!-- ============================================================== -->
+      <section id="view-settings" class="view-section">
+        <div class="card">
+          <div class="card-title">Environment Diagnostics &amp; Runtime Settings</div>
+          <table class="data-table" style="margin-top:1rem;">
+            <tbody id="tbody-env-settings">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Honest Security Model &amp; Known Limitations</div>
+          <div class="callout-box callout-info" style="margin-top:1rem;">
+            <div>
+              <strong>1. Discretionary Access Control (DAC):</strong> The harness validates Linux POSIX DAC permissions
+              between non-root UIDs. It does not certify against kernel privilege escalation or zero-day breakouts.<br><br>
+              <strong>2. Chain Tamper-Evidence:</strong> SHA-256 hash chaining detects modifications relative to genesis.
+              It does not prevent full-chain replacement without an external trusted anchor.<br><br>
+              <strong>3. macOS VirtioFS Translation:</strong> Docker Desktop on macOS translates file permissions across host
+              bind mounts. BREACHLINE mitigates this via a container-initialized volume (<code>breachline-fixture-vol</code>).
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Guided Test Execution Modal -->
+  <div class="modal-overlay" id="run-modal">
+    <div class="modal-content" style="max-width: 620px;">
+      <button class="modal-close" onclick="closeRunModal()">&times;</button>
+      <div class="card-title" style="margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
+        <span>&#9654;</span> Configure &amp; Execute Boundary Evaluation
+      </div>
+      <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:1.25rem;">
+        Stimulate configured boundaries, observe real access behavior, and record evidence into a verifiable SHA-256 hash chain.
+      </p>
+
+      <div class="form-group" style="margin-bottom:1.25rem;">
+        <label class="form-label" style="font-weight:600;">Step 1: Select Execution Mode</label>
+        <select class="form-control" id="select-exec-mode" style="font-size:0.9rem;">
+          <option value="docker" selected>Docker Worker Isolation (Linux Kernel DAC — Non-Root UID 1001 vs 1002)</option>
+          <option value="local_os">Host OS POSIX DAC (Host Kernel Syscalls under Current UID)</option>
+          <option value="simulated">Explicit Role Simulation (Offline Demonstration — Clearly Tagged as Not OS-Enforced)</option>
+        </select>
+        <div id="modal-mode-hint" style="font-size:0.8rem; color:var(--cyan-primary); margin-top:0.4rem;">
+          Genuine Linux kernel enforcement across isolated container boundaries.
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1.25rem;">
+        <label class="form-label" style="font-weight:600;">Step 2: Configured Boundary Scenarios</label>
+        <div style="background:var(--bg-input); border:1px solid var(--border-card); border-radius:var(--radius-sm); padding:0.75rem; font-size:0.82rem; font-family:var(--font-mono); line-height:1.6;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+            <span><strong class="text-cyan">T1</strong>: Red &rarr; /data/red/red_secret.txt</span>
+            <span class="pill-allow">EXPECT: ALLOW</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+            <span><strong class="text-cyan">T2</strong>: Red &rarr; /data/blue/blue_secret.txt</span>
+            <span class="pill-deny">EXPECT: DENY</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+            <span><strong class="text-cyan">T3</strong>: Blue &rarr; /data/blue/blue_secret.txt</span>
+            <span class="pill-allow">EXPECT: ALLOW</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span><strong class="text-amber">T4</strong>: Red &rarr; /data/leaky/blue_leaked.txt (Negative Control)</span>
+            <span class="pill-deny">EXPECT: DENY</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
+        <div style="font-size:0.78rem; color:var(--text-muted);">
+          Evidence will be sealed in an independent SHA-256 chain.
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+          <button class="btn btn-secondary" onclick="closeRunModal()">Cancel</button>
+          <button class="btn btn-primary" id="btn-modal-start-run">&#9889; Start Evaluation Run</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Run Comparison Modal -->
+  <div class="modal-overlay" id="compare-modal">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closeCompareModal()">&times;</button>
+      <div class="card-title" style="margin-bottom:1rem;">Compare Two Execution Runs</div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1.25rem;">
+        <div class="form-group">
+          <label class="form-label">Run A (Baseline)</label>
+          <select class="form-control" id="compare-select-a"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Run B (Comparison)</label>
+          <select class="form-control" id="compare-select-b"></select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btn-execute-compare">Compare Runs</button>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

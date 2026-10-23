@@ -1,0 +1,24 @@
+{
+  "run_id": "fba290ad-be2c-4b9b-9755-ad3c4f925e78",
+  "timestamp_utc": "2026-10-19T18:01:43.013073+00:00",
+  "finish_time_utc": "2026-10-19T18:01:43.021818+00:00",
+  "execution_mode": "docker",
+  "environment_info": {
+    "os": "Darwin",
+    "release": "27.0.0",
+    "python": "3.14.2",
+    "effective_mode": "docker",
+    "is_os_enforced": true,
+    "timestamp_utc": "2026-10-19T18:01:43.009718+00:00"
+  },
+  "total_tests": 4,
+  "policy_matches": 3,
+  "policy_mismatches": 1,
+  "unexpected_access_count": 1,
+  "evidence_integrity": {
+    "is_valid": true,
+    "total_records": 4,
+    "error_type": null,
+    "error_message": null
+  }
+}

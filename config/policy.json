@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "name": "BREACHLINE_EVAL_SANDBOX_POLICY",
+  "description": "Baseline file-access boundary rules for multi-tenant AI sandbox isolation",
+  "roles": {
+    "red-worker": {
+      "uid": 1001,
+      "gid": 1001,
+      "allowed_prefixes": ["/data/red/"],
+      "denied_prefixes": ["/data/blue/", "/etc/shadow", "/proc/kcore"]
+    },
+    "blue-worker": {
+      "uid": 1002,
+      "gid": 1002,
+      "allowed_prefixes": ["/data/blue/"],
+      "denied_prefixes": ["/data/red/", "/etc/shadow", "/proc/kcore"]
+    }
+  },
+  "enforcement_mechanism": "Linux POSIX Discretionary Access Control (DAC) via non-root container users, read-only rootfs, and dropped capabilities."
+}

@@ -1,0 +1,23 @@
+{
+  "run_id": "5c8b7a72-49cb-4fb3-9e4c-13a2549ddba5",
+  "timestamp_utc": "2026-10-19T17:10:46.187645+00:00",
+  "finish_time_utc": "2026-10-19T17:10:46.194357+00:00",
+  "execution_mode": "local_sandbox",
+  "environment_info": {
+    "os": "Darwin",
+    "release": "27.0.0",
+    "python": "3.14.2",
+    "effective_mode": "local_sandbox",
+    "timestamp_utc": "2026-10-19T17:10:46.185031+00:00"
+  },
+  "total_tests": 4,
+  "policy_matches": 3,
+  "policy_mismatches": 1,
+  "unexpected_access_count": 1,
+  "evidence_integrity": {
+    "is_valid": true,
+    "total_records": 4,
+    "error_type": null,
+    "error_message": null
+  }
+}
