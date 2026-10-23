@@ -90,3 +90,21 @@ def test_runner_execution_and_negative_control():
     finally:
         if os.path.exists(ev_path):
             os.remove(ev_path)
+
+
+def test_runner_docker_worker_unreachable_raises_clear_error(monkeypatch):
+    """Verify that mode='docker' raises a clear error and refuses to silently simulate if workers are offline."""
+    monkeypatch.setattr("src.runner.wait_for_workers", lambda timeout=4: False)
+
+    runner = TestRunner(
+        config_path="config/test_cases.json",
+        evidence_path="output/scratch_unreach.jsonl",
+        mode="docker",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        runner.run_all(verify_workers=True)
+
+    err_msg = str(exc_info.value)
+    assert "Docker worker containers are offline" in err_msg or "refuses to silently substitute" in err_msg
+

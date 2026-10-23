@@ -151,39 +151,56 @@
           </div>
         </div>
 
-        <!-- 10 Required KPI Cards -->
-        <div class="grid-cards">
-          <div class="stat-card">
-            <div class="stat-label">Total Test Runs</div>
-            <div class="stat-value mono text-cyan" id="kpi-total-runs">0</div>
+        <!-- Section: Active Evaluation Run Metrics -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+          <div>
+            <span style="font-size:0.85rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--cyan-primary);">&#9670; Active Evaluation Run</span>
+            <span id="active-run-subtitle" style="font-size:0.8rem; color:var(--text-muted); margin-left:0.5rem;">Loading active run...</span>
           </div>
+          <div id="active-run-quick-badge"></div>
+        </div>
+        <div class="grid-cards" id="grid-active-cards" style="margin-bottom:1.5rem;">
           <div class="stat-card">
-            <div class="stat-label">Boundary Cases Executed</div>
-            <div class="stat-value mono" id="kpi-cases-executed">0</div>
+            <div class="stat-label">Active Cases Executed</div>
+            <div class="stat-value mono text-cyan" id="kpi-active-cases">—</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Policy Matches (PASS)</div>
-            <div class="stat-value mono text-green" id="kpi-policy-matches">0</div>
+            <div class="stat-value mono text-green" id="kpi-active-matches">—</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Policy Mismatches (FAIL)</div>
-            <div class="stat-value mono text-red" id="kpi-policy-mismatches">0</div>
+            <div class="stat-value mono text-red" id="kpi-active-mismatches">—</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Unexpected Access (DENY&rarr;ALLOW)</div>
-            <div class="stat-value mono text-amber" id="kpi-unexpected-access">0</div>
+            <div class="stat-label">Evidence Integrity</div>
+            <div class="stat-value mono text-green" id="kpi-active-integrity">—</div>
+          </div>
+        </div>
+
+        <!-- Section: Cumulative Historical Ledger -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+          <div>
+            <span style="font-size:0.85rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary);">&#9632; Cumulative Historical Ledger</span>
+            <span style="font-size:0.8rem; color:var(--text-muted); margin-left:0.5rem;">Aggregated across all runs in output/runs/index.json</span>
+          </div>
+        </div>
+        <div class="grid-cards" id="grid-historical-cards" style="margin-bottom:1.75rem;">
+          <div class="stat-card">
+            <div class="stat-label">Total Historical Runs</div>
+            <div class="stat-value mono text-cyan" id="kpi-total-runs">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Cumulative Operations</div>
+            <div class="stat-value mono" id="kpi-cases-executed">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Cumulative Mismatches</div>
+            <div class="stat-value mono text-red" id="kpi-policy-mismatches">—</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Verified Chains (VALID)</div>
-            <div class="stat-value mono text-green" id="kpi-verified-chains">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Invalid Chains (TAMPERED)</div>
-            <div class="stat-value mono text-red" id="kpi-invalid-chains">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Most Recent Run</div>
-            <div class="stat-value mono text-muted" style="font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis;" id="kpi-recent-run">None</div>
+            <div class="stat-value mono text-green" id="kpi-verified-chains">—</div>
           </div>
         </div>
 

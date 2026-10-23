@@ -1,6 +1,366 @@
 {
   "runs": [
     {
+      "run_id": "71466b50-829d-45df-bf2e-3d88135611d6",
+      "timestamp_utc": "2026-10-23T21:50:32.382536+00:00",
+      "finish_time_utc": "2026-10-23T21:50:32.395460+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T21:50:32.376723+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "efd7fe27-f611-401d-8d4b-61b9d75e8f29",
+      "timestamp_utc": "2026-10-23T21:49:45.445827+00:00",
+      "finish_time_utc": "2026-10-23T21:49:45.447739+00:00",
+      "execution_mode": "local_sandbox",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "local_sandbox",
+        "is_os_enforced": false,
+        "timestamp_utc": "2026-10-23T21:49:45.445167+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "209de120-2613-4a74-a73a-15ac4e64af58",
+      "timestamp_utc": "2026-10-23T21:49:45.407768+00:00",
+      "finish_time_utc": "2026-10-23T21:49:45.409413+00:00",
+      "execution_mode": "local_sandbox",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "local_sandbox",
+        "is_os_enforced": false,
+        "timestamp_utc": "2026-10-23T21:49:45.406935+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "3338320d-994d-4293-9d8f-0754bc5c8e11",
+      "timestamp_utc": "2026-10-23T21:48:47.142902+00:00",
+      "finish_time_utc": "2026-10-23T21:48:47.144910+00:00",
+      "execution_mode": "local_sandbox",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "local_sandbox",
+        "is_os_enforced": false,
+        "timestamp_utc": "2026-10-23T21:48:47.141819+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "f86abf7e-60c3-4f04-b0a6-5935bac9ffca",
+      "timestamp_utc": "2026-10-23T21:48:47.105263+00:00",
+      "finish_time_utc": "2026-10-23T21:48:47.106927+00:00",
+      "execution_mode": "local_sandbox",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "local_sandbox",
+        "is_os_enforced": false,
+        "timestamp_utc": "2026-10-23T21:48:47.104261+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "d47e6946-7c87-424b-aabc-9200f2ca9869",
+      "timestamp_utc": "2026-10-23T20:08:37.702290+00:00",
+      "finish_time_utc": "2026-10-23T20:08:37.703998+00:00",
+      "execution_mode": "local_sandbox",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "local_sandbox",
+        "is_os_enforced": false,
+        "timestamp_utc": "2026-10-23T20:08:37.701411+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "5b39263b-56f9-4c41-a58e-14bf73e0ea29",
+      "timestamp_utc": "2026-10-23T19:59:19.442849+00:00",
+      "finish_time_utc": "2026-10-23T19:59:19.457253+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T19:59:19.436509+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "90648626-6f46-4333-ae9b-844973444079",
+      "timestamp_utc": "2026-10-23T19:59:12.909809+00:00",
+      "finish_time_utc": "2026-10-23T19:59:12.924206+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T19:59:12.905576+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "796bf816-32cf-409a-b9ea-06e411137a5f",
+      "timestamp_utc": "2026-10-23T19:59:08.117826+00:00",
+      "finish_time_utc": "2026-10-23T19:59:08.128751+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T19:59:08.114026+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "ef553945-8fd5-4e06-b136-71bc69c133f8",
+      "timestamp_utc": "2026-10-23T19:59:01.591488+00:00",
+      "finish_time_utc": "2026-10-23T19:59:01.609717+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T19:59:01.585211+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "1bcbddb3-1716-47ec-bcaa-e57952d50ae6",
+      "timestamp_utc": "2026-10-23T16:00:52.612272+00:00",
+      "finish_time_utc": "2026-10-23T16:00:52.620211+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T16:00:52.608701+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "c24d5ebc-4844-4e04-8c26-601e3c6ad0b5",
+      "timestamp_utc": "2026-10-23T15:54:09.091190+00:00",
+      "finish_time_utc": "2026-10-23T15:54:09.109051+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T15:54:09.086386+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "178d469f-6b3a-4d35-8b5b-b0091adfdae9",
+      "timestamp_utc": "2026-10-23T15:50:41.525931+00:00",
+      "finish_time_utc": "2026-10-23T15:50:41.531423+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-23T15:50:41.523781+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "b4231f84-5fe5-41d5-a195-6d21f3f2e746",
+      "timestamp_utc": "2026-10-23T15:46:07.686135+00:00",
+      "finish_time_utc": "2026-10-23T15:46:07.688533+00:00",
+      "execution_mode": "local_sandbox",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "local_sandbox",
+        "is_os_enforced": false,
+        "timestamp_utc": "2026-10-23T15:46:07.685312+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
+      "run_id": "dc409a50-bac9-4289-a0f5-dbe21d4e4505",
+      "timestamp_utc": "2026-10-23T15:39:36.397965+00:00",
+      "finish_time_utc": "2026-10-23T15:39:36.400134+00:00",
+      "execution_mode": "local_sandbox",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "local_sandbox",
+        "is_os_enforced": false,
+        "timestamp_utc": "2026-10-23T15:39:36.396894+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      }
+    },
+    {
       "run_id": "49537588-c0ce-4d2e-8482-b2bc4ada7b35",
       "timestamp_utc": "2026-10-23T13:55:08.184690+00:00",
       "finish_time_utc": "2026-10-23T13:55:08.197557+00:00",
@@ -683,5 +1043,5 @@
       }
     }
   ],
-  "updated_at": "2026-10-23T13:55:08.199501+00:00"
+  "updated_at": "2026-10-23T21:50:32.397404+00:00"
 }

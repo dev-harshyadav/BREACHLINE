@@ -104,6 +104,16 @@ def get_system_status() -> Dict[str, Any]:
     valid_chains = sum(1 for r in runs if r.get("evidence_integrity", {}).get("is_valid", False))
     invalid_chains = sum(1 for r in runs if not r.get("evidence_integrity", {}).get("is_valid", False))
 
+    cumulative = {
+        "total_runs": total_runs,
+        "total_cases_executed": total_cases,
+        "policy_matches": total_matches,
+        "policy_mismatches": total_mismatches,
+        "unexpected_access_outcomes": total_unexpected,
+        "verified_evidence_chains": valid_chains,
+        "invalid_evidence_chains": invalid_chains,
+    }
+
     return {
         "status": "online",
         "system_info": {
@@ -114,13 +124,8 @@ def get_system_status() -> Dict[str, Any]:
         },
         "docker_environment": docker_status,
         "metrics": {
-            "total_runs": total_runs,
-            "total_cases_executed": total_cases,
-            "policy_matches": total_matches,
-            "policy_mismatches": total_mismatches,
-            "unexpected_access_outcomes": total_unexpected,
-            "verified_evidence_chains": valid_chains,
-            "invalid_evidence_chains": invalid_chains,
+            **cumulative,
+            "cumulative": cumulative,
         },
         "latest_run": latest,
     }

@@ -1,0 +1,75 @@
+{
+  "report_generated_utc": "2026-10-23T21:48:47.152640+00:00",
+  "run_id": "3338320d-994d-4293-9d8f-0754bc5c8e11",
+  "start_time_utc": "2026-10-23T21:48:47.142902+00:00",
+  "finish_time_utc": "2026-10-23T21:48:47.144910+00:00",
+  "total_tests": 4,
+  "passed_tests": 3,
+  "failed_tests": 1,
+  "evidence_verification": {
+    "status": "VALID",
+    "total_records_verified": 4,
+    "error_type": null,
+    "error_message": null
+  },
+  "trust_anchor": {
+    "status": "INTERNAL_CHAIN_VALID_NO_ANCHOR",
+    "verified": null
+  },
+  "test_results": [
+    {
+      "sequence_number": 1,
+      "test_id": "T1",
+      "description": "Red worker reads its own permitted secret file",
+      "role": "red-worker",
+      "operation": "file:read /data/red/red_secret.txt",
+      "expected": "ALLOW",
+      "actual": "ALLOW",
+      "result": "PASS",
+      "exit_code": 0,
+      "record_hash": "ffa8f366f493ef176cb7d4cf0431d5c852c829e3a8f6ea566faeaeffc230360d"
+    },
+    {
+      "sequence_number": 2,
+      "test_id": "T2",
+      "description": "Red worker attempts cross-boundary read of protected blue secret file",
+      "role": "red-worker",
+      "operation": "file:read /data/blue/blue_secret.txt",
+      "expected": "DENY",
+      "actual": "DENY",
+      "result": "PASS",
+      "exit_code": 1,
+      "record_hash": "efafe2fa2dfdc1156b4f0915057748a7f5219bb275d6e1001d4d96a5be6057d6"
+    },
+    {
+      "sequence_number": 3,
+      "test_id": "T3",
+      "description": "Blue worker reads its own permitted secret file",
+      "role": "blue-worker",
+      "operation": "file:read /data/blue/blue_secret.txt",
+      "expected": "ALLOW",
+      "actual": "ALLOW",
+      "result": "PASS",
+      "exit_code": 0,
+      "record_hash": "86777d2c96aa41b3589ccfd2822ce483b5dc8588e5d3daa15e8895f7585cf59e"
+    },
+    {
+      "sequence_number": 4,
+      "test_id": "T4",
+      "description": "Negative Control: Red worker accesses leaky fixture (simulated DAC misconfiguration)",
+      "role": "red-worker",
+      "operation": "file:read /data/leaky/blue_leaked.txt",
+      "expected": "DENY",
+      "actual": "ALLOW",
+      "result": "FAIL",
+      "exit_code": 0,
+      "record_hash": "21928e5f09a311cf390af53fd8c803b47ed2848c1df2b1e3c59952abbddaa2d7"
+    }
+  ],
+  "known_limitations": [
+    "Hash chains provide tamper-evidence against record mutation, deletion, and reordering, but cannot prevent complete chain rewrites without an external trusted anchor or immutable transparency log.",
+    "Access-control boundary enforcement relies entirely on the underlying Linux kernel Discretionary Access Control (DAC) and container runtime isolation; BREACHLINE only evaluates and produces evidence.",
+    "On macOS Docker Desktop, host bind-mounts using VirtioFS / osxfs do not preserve POSIX DAC ownership reliably without Linux container volume initialization.",
+    "Network-level isolation boundaries and kernel privilege escalation (e.g., container breakout via kernel exploit) are currently out of scope for this file-boundary MVP."
+  ]
+}

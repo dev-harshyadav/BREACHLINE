@@ -1,3 +1,5 @@
+name: breachline
+
 services:
   fixture-init:
     image: alpine:latest

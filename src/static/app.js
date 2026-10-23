@@ -187,15 +187,18 @@ function setupEventHandlers() {
 async function refreshAll() {
   try {
     const res = await fetch('/api/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     state.systemStatus = data;
 
     updateHeaderAndSidebar(data);
-    updateKpis(data.metrics, data.latest_run);
+    updateCumulativeKpis(data.metrics);
 
     if (data.latest_run) {
       state.latestRunId = data.latest_run.run_id;
-      await fetchRunDetails(state.latestRunId);
+      await fetchRunDetails(state.latestRunId, false);
+    } else {
+      updateActiveRunKpis(null);
     }
 
     await fetchRunsHistory();
@@ -203,6 +206,8 @@ async function refreshAll() {
     await renderInspector();
   } catch (err) {
     console.error('Failed to load status:', err);
+    updateCumulativeKpis(null);
+    updateActiveRunKpis(null);
   }
 }
 
@@ -228,29 +233,77 @@ function updateHeaderAndSidebar(status) {
   }
 }
 
-function updateKpis(metrics, latestRun) {
-  if (!metrics) return;
-  document.getElementById('kpi-total-runs').textContent = metrics.total_runs;
-  document.getElementById('kpi-cases-executed').textContent = metrics.total_cases_executed;
-  document.getElementById('kpi-policy-matches').textContent = metrics.policy_matches;
-  document.getElementById('kpi-policy-mismatches').textContent = metrics.policy_mismatches;
-  document.getElementById('kpi-unexpected-access').textContent = metrics.unexpected_access_outcomes;
-  document.getElementById('kpi-verified-chains').textContent = metrics.verified_evidence_chains;
-  document.getElementById('kpi-invalid-chains').textContent = metrics.invalid_evidence_chains;
+function updateCumulativeKpis(metrics) {
+  if (!metrics) {
+    document.getElementById('kpi-total-runs').textContent = '—';
+    document.getElementById('kpi-cases-executed').textContent = '—';
+    document.getElementById('kpi-policy-mismatches').textContent = '—';
+    document.getElementById('kpi-verified-chains').textContent = '—';
+    return;
+  }
+  const cum = metrics.cumulative || metrics;
+  document.getElementById('kpi-total-runs').textContent = cum.total_runs ?? 0;
+  document.getElementById('kpi-cases-executed').textContent = cum.total_cases_executed ?? 0;
+  document.getElementById('kpi-policy-mismatches').textContent = cum.policy_mismatches ?? 0;
+  document.getElementById('kpi-verified-chains').textContent = cum.verified_evidence_chains ?? 0;
+}
 
-  if (latestRun) {
-    document.getElementById('kpi-recent-run').textContent = latestRun.run_id.slice(0, 8) + '...';
-  } else {
-    document.getElementById('kpi-recent-run').textContent = 'None';
+function updateActiveRunKpis(meta, isHistorical = false) {
+  const elCases = document.getElementById('kpi-active-cases');
+  const elMatches = document.getElementById('kpi-active-matches');
+  const elMismatches = document.getElementById('kpi-active-mismatches');
+  const elIntegrity = document.getElementById('kpi-active-integrity');
+  const elSub = document.getElementById('active-run-subtitle');
+  const elBadge = document.getElementById('active-run-quick-badge');
+
+  if (!meta || !meta.run_id) {
+    if (elCases) elCases.textContent = '0';
+    if (elMatches) elMatches.textContent = '0';
+    if (elMismatches) elMismatches.textContent = '0';
+    if (elIntegrity) elIntegrity.textContent = 'None';
+    if (elSub) elSub.textContent = 'No evaluation recorded yet. Click "Run Boundary Tests".';
+    if (elBadge) elBadge.innerHTML = '';
+    return;
+  }
+
+  const isChainValid = meta.evidence_integrity?.is_valid;
+  const isPolicyPass = meta.policy_mismatches === 0;
+
+  if (elCases) elCases.textContent = meta.total_tests ?? 0;
+  if (elMatches) elMatches.textContent = meta.policy_matches ?? 0;
+  if (elMismatches) elMismatches.textContent = meta.policy_mismatches ?? 0;
+  if (elIntegrity) {
+    elIntegrity.textContent = isChainValid ? 'VALID' : 'INVALID';
+    elIntegrity.className = `stat-value mono ${isChainValid ? 'text-green' : 'text-red'}`;
+  }
+
+  if (elSub) {
+    const timeStr = meta.timestamp_utc ? meta.timestamp_utc.slice(0, 19).replace('T', ' ') : '';
+    elSub.innerHTML = `
+      <span class="mono text-cyan">${meta.run_id.slice(0, 8)}...</span>
+      <span style="margin: 0 0.35rem;">&bull;</span>
+      <span>${timeStr} UTC</span>
+      <span style="margin: 0 0.35rem;">&bull;</span>
+      <span class="badge badge-info">${meta.execution_mode || 'auto'}</span>
+      ${isHistorical ? '<span class="badge badge-warn" style="margin-left:0.35rem;">Historical Selection</span>' : '<span class="badge badge-pass" style="margin-left:0.35rem;">Latest Run</span>'}
+    `;
+  }
+
+  if (elBadge) {
+    elBadge.innerHTML = `
+      <span class="badge ${isPolicyPass ? 'badge-pass' : 'badge-fail'}">Policy: ${isPolicyPass ? 'PASS' : 'FAIL (Negative Control)'}</span>
+      <span class="badge ${isChainValid ? 'badge-pass' : 'badge-fail'}" style="margin-left:0.35rem;">Evidence: ${isChainValid ? 'VALID' : 'INVALID'}</span>
+    `;
   }
 }
 
-async function fetchRunDetails(runId) {
+async function fetchRunDetails(runId, isHistorical = false) {
   try {
     const res = await fetch(`/api/runs/${runId}`);
     if (!res.ok) return;
     const data = await res.json();
     state.activeRunData = data;
+    updateActiveRunKpis(data.meta, isHistorical);
     renderOverviewResults(data);
     renderScenariosTable(data.config || []);
   } catch (err) {
@@ -477,7 +530,8 @@ async function fetchRunsHistory() {
 
 async function selectRun(runId) {
   state.latestRunId = runId;
-  await fetchRunDetails(runId);
+  const isHistorical = Boolean(state.systemStatus?.latest_run?.run_id && state.systemStatus.latest_run.run_id !== runId);
+  await fetchRunDetails(runId, isHistorical);
   navigateTo('overview');
 }
 

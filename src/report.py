@@ -269,6 +269,7 @@ def render_html_report(data: Dict[str, Any]) -> str:
             </div>
             <div style="text-align: right;">
                 <div class="{verif_badge_class}">Evidence Chain: {verif_status}</div>
+                <div class="badge-pass" style="margin-top: 0.35rem; display: inline-block;">Trust Anchor: {data.get("trust_anchor", {}).get("status", "UNANCHORED")}</div>
                 <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
                     Generated: {data["report_generated_utc"]}
                 </div>
@@ -348,7 +349,7 @@ def render_html_report(data: Dict[str, Any]) -> str:
         </div>
 
         <div class="footer">
-            BREACHLINE Security Workbench &bull; Hack in Hills '26 &bull; Track 04 — Bayora &bull; Team NovaCrew (Lead: Harsh Yadav)
+            BREACHLINE Security Workbench &bull; Hack in Hills '26 &bull; Track 04 — Securing Adversarial AI Safety Testing Infrastructure &bull; Team NovaCrew (Lead: Harsh Yadav)
         </div>
     </div>
 </body>
@@ -400,6 +401,10 @@ def generate_report(
             "total_records_verified": verif.total_records,
             "error_type": verif.error_type,
             "error_message": verif.error_message,
+        },
+        "trust_anchor": {
+            "status": verif.anchor_status or ("VERIFIED" if verif.anchor_verified else "UNANCHORED"),
+            "verified": verif.anchor_verified,
         },
         "test_results": [
             {
