@@ -31,8 +31,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventHandlers();
   const heroRun = document.getElementById('hero-run-tests');
   if (heroRun) heroRun.addEventListener('click', () => openRunModal());
-  await refreshAll();
+  window.addEventListener('hashchange', handleHashRouting);
   handleHashRouting();
+  await refreshAll();
 });
 
 // Navigation Handling
@@ -46,49 +47,76 @@ function setupNavigation() {
   });
 }
 
-function navigateTo(viewName) {
-  state.currentView = viewName;
-  window.location.hash = viewName;
-
-  document.querySelectorAll('.nav-link').forEach(l => {
-    if (l.getAttribute('data-view') === viewName) {
-      l.classList.add('active');
-    } else {
-      l.classList.remove('active');
+async function navigateTo(viewName) {
+  if (!viewName) viewName = 'overview';
+  try {
+    state.currentView = viewName;
+    if (window.location.hash !== `#${viewName}`) {
+      window.location.hash = viewName;
     }
-  });
 
-  document.querySelectorAll('.view-section').forEach(sec => {
-    sec.classList.remove('active');
-  });
+    document.querySelectorAll('.nav-link').forEach(l => {
+      if (l.getAttribute('data-view') === viewName) {
+        l.classList.add('active');
+      } else {
+        l.classList.remove('active');
+      }
+    });
 
-  const activeSec = document.getElementById(`view-${viewName}`);
-  if (activeSec) {
-    activeSec.classList.add('active');
-  }
+    document.querySelectorAll('.view-section').forEach(sec => {
+      sec.classList.remove('active');
+    });
 
-  // Update Page Title
-  const titles = {
-    'overview': 'Security Boundary Overview',
-    'boundary-lab': 'Boundary Testing Laboratory',
-    'scenarios': 'Configured Test Scenarios',
-    'history': 'Run History & Reproducibility',
-    'inspector': 'Violation & Anomaly Inspector',
-    'vault': 'Cryptographic Evidence Vault',
-    'verification': 'Independent Integrity Verifier',
-    'tamper-lab': 'Evidence Tampering Laboratory',
-    'reports': 'Audit Report Center',
-    'settings': 'Environment & Security Settings',
-  };
-  document.getElementById('current-view-title').textContent = titles[viewName] || 'BREACHLINE Workbench';
+    let activeSec = document.getElementById(`view-${viewName}`);
+    if (!activeSec) {
+      console.warn(`View section #view-${viewName} not found, falling back to overview`);
+      viewName = 'overview';
+      activeSec = document.getElementById('view-overview');
+    }
+    if (activeSec) {
+      activeSec.classList.add('active');
+    }
 
-  // Trigger view-specific data refresh
-  if (viewName === 'vault' || viewName === 'verification') {
-    renderVaultAndVerification();
-  } else if (viewName === 'inspector') {
-    renderInspector();
-  } else if (viewName === 'reports') {
-    renderReportFrame();
+    // Update Page Title
+    const titles = {
+      'overview': 'Security Boundary Overview',
+      'boundary-lab': 'Boundary Testing Laboratory',
+      'scenarios': 'Configured Test Scenarios',
+      'history': 'Run History & Reproducibility',
+      'inspector': 'Violation & Anomaly Inspector',
+      'vault': 'Cryptographic Evidence Vault',
+      'verification': 'Independent Integrity Verifier',
+      'tamper-lab': 'Evidence Tampering Laboratory',
+      'reports': 'Audit Report Center',
+      'settings': 'Environment & Security Settings',
+    };
+    const titleEl = document.getElementById('current-view-title');
+    if (titleEl) titleEl.textContent = titles[viewName] || 'BREACHLINE Workbench';
+
+    // Trigger view-specific data refresh safely
+    if (viewName === 'overview') {
+      if (state.activeRunData) {
+        renderOverviewResults(state.activeRunData);
+      }
+    } else if (viewName === 'boundary-lab') {
+      await fetchBoundaryLabSchema();
+    } else if (viewName === 'scenarios') {
+      await renderScenariosTable();
+    } else if (viewName === 'history') {
+      await fetchRunsHistory();
+    } else if (viewName === 'inspector') {
+      await renderInspector();
+    } else if (viewName === 'vault' || viewName === 'verification') {
+      renderVaultAndVerification();
+    } else if (viewName === 'reports') {
+      renderReportFrame();
+    } else if (viewName === 'settings') {
+      if (state.systemStatus) {
+        updateHeaderAndSidebar(state.systemStatus);
+      }
+    }
+  } catch (navErr) {
+    console.error(`Navigation error for view ${viewName}:`, navErr);
   }
 }
 
@@ -96,6 +124,8 @@ function handleHashRouting() {
   const hash = window.location.hash.replace('#', '');
   if (hash && document.getElementById(`view-${hash}`)) {
     navigateTo(hash);
+  } else if (!hash) {
+    navigateTo('overview');
   }
 }
 
@@ -372,8 +402,10 @@ async function fetchRunDetails(runId, isHistorical = false) {
 
 function renderOverviewResults(runData) {
   const tbody = document.getElementById('tbody-overview-results');
+  if (!tbody) return;
+
   if (!runData || !runData.records || runData.records.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-muted" style="text-align:center;">No test execution recorded yet. Click "Run Boundary Tests".</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-muted" style="text-align:center; padding:2rem;">No test execution recorded yet. Click "Run Boundary Tests".</td></tr>`;
     return;
   }
 
@@ -382,14 +414,22 @@ function renderOverviewResults(runData) {
     const isPass = r.result === 'PASS';
     const resBadge = isPass ? '<span class="badge badge-pass">PASS</span>' : '<span class="badge badge-fail">FAIL</span>';
     const isUnexpected = r.expected_outcome === 'DENY' && r.actual_outcome === 'ALLOW';
-    const noteBadge = isUnexpected ? '<span class="badge badge-warn">UNEXPECTED ACCESS</span>' : '<span class="text-muted">Expected</span>';
+    const noteBadge = isUnexpected
+      ? '<span class="badge badge-warn">UNEXPECTED ACCESS</span>'
+      : (r.actual_outcome === 'ERROR' || r.actual_outcome === 'UNAVAILABLE' || r.actual_outcome === 'TIMEOUT'
+         ? `<span class="badge badge-fail">${escapeHtml(r.actual_outcome)}</span>`
+         : '<span class="text-muted">Expected</span>');
 
-    const testId = escapeHtml(r.test_id);
-    const desc = escapeHtml(r.test_description);
-    const role = escapeHtml(r.role);
-    const op = escapeHtml(r.operation);
-    const exp = escapeHtml(r.expected_outcome);
-    const act = escapeHtml(r.actual_outcome);
+    const testId = escapeHtml(r.test_id || '—');
+    const desc = escapeHtml(r.test_description || '—');
+    const role = escapeHtml(r.role || '—');
+    const op = escapeHtml(r.operation || '—');
+    const exp = escapeHtml(r.expected_outcome || 'UNKNOWN');
+    const act = escapeHtml(r.actual_outcome || 'UNKNOWN');
+    const expLower = String(r.expected_outcome || '').toLowerCase();
+    const actLower = String(r.actual_outcome || '').toLowerCase();
+    const expClass = expLower === 'allow' ? 'pill-allow' : 'pill-deny';
+    const actClass = actLower === 'allow' ? 'pill-allow' : (actLower === 'deny' ? 'pill-deny' : 'badge-fail');
 
     html += `
       <tr>
@@ -397,8 +437,8 @@ function renderOverviewResults(runData) {
         <td>${desc}</td>
         <td class="mono text-cyan">${role}</td>
         <td class="mono" style="font-size:0.8rem;">${op}</td>
-        <td><span class="mono pill-${exp.toLowerCase()}">${exp}</span></td>
-        <td><span class="mono pill-${act.toLowerCase()}">${act}</span></td>
+        <td><span class="mono ${expClass}">${exp}</span></td>
+        <td><span class="mono ${actClass}">${act}</span></td>
         <td>${resBadge}</td>
         <td>${noteBadge}</td>
       </tr>
@@ -409,50 +449,80 @@ function renderOverviewResults(runData) {
   // Overview Verification summary box
   const meta = runData.meta || {};
   const verif = meta.evidence_integrity || {};
-  const isValid = verif.is_valid;
-  const isAnchored = meta.anchored || (meta.trust_anchor && meta.trust_anchor.anchored);
+  const isValid = Boolean(verif.is_valid);
+  const isAnchored = Boolean(meta.anchored || (meta.trust_anchor && meta.trust_anchor.anchored));
   const runIdEsc = escapeHtml(meta.run_id || 'N/A');
-  const statusHtml = `
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        Status: <strong class="${isValid ? 'text-green' : 'text-red'}">${isValid ? 'VALID (Tamper-Evidence Passed)' : 'INVALID / TAMPERED'}</strong>
-        <span style="color:var(--text-muted); margin-left:1rem;">Verified ${verif.total_records || 0} Records</span>
-        ${isAnchored ? '<span class="badge badge-pass" style="margin-left:0.75rem;">TRUST ANCHOR VERIFIED</span>' : ''}
+  const verifBox = document.getElementById('overview-verification-box');
+  if (verifBox) {
+    verifBox.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          Status: <strong class="${isValid ? 'text-green' : 'text-red'}">${isValid ? 'VALID (Tamper-Evidence Passed)' : 'INVALID / TAMPERED'}</strong>
+          <span style="color:var(--text-muted); margin-left:1rem;">Verified ${verif.total_records || 0} Records</span>
+          ${isAnchored ? '<span class="badge badge-pass" style="margin-left:0.75rem;">TRUST ANCHOR VERIFIED</span>' : ''}
+        </div>
+        <div class="mono text-cyan" style="font-size:0.75rem;">Run ID: ${runIdEsc}</div>
       </div>
-      <div class="mono text-cyan" style="font-size:0.75rem;">Run ID: ${runIdEsc}</div>
-    </div>
-  `;
-  document.getElementById('overview-verification-box').innerHTML = statusHtml;
+    `;
+  }
 
   // Badges in Card Header
-  document.getElementById('latest-run-badges').innerHTML = `
-    <span class="badge badge-info">Mode: ${escapeHtml(meta.execution_mode || 'auto')}</span>
-    <span class="badge ${isValid ? 'badge-pass' : 'badge-fail'}">Chain: ${isValid ? 'VALID' : 'INVALID'}</span>
-    ${isAnchored ? '<span class="badge badge-pass">Anchored</span>' : ''}
-  `;
+  const badgesEl = document.getElementById('latest-run-badges');
+  if (badgesEl) {
+    badgesEl.innerHTML = `
+      <span class="badge badge-info">Mode: ${escapeHtml(meta.execution_mode || 'auto')}</span>
+      <span class="badge ${isValid ? 'badge-pass' : 'badge-fail'}">Chain: ${isValid ? 'VALID' : 'INVALID'}</span>
+      ${isAnchored ? '<span class="badge badge-pass">Anchored</span>' : ''}
+    `;
+  }
 }
 
-function renderScenariosTable(configList) {
+async function renderScenariosTable(configList) {
   const tbody = document.getElementById('tbody-scenarios-list');
   if (!tbody) return;
+
   if (!configList || configList.length === 0) {
-    configList = state.labSchema?.presets?.standard_demo || [];
+    if (state.activeRunData?.config && state.activeRunData.config.length > 0) {
+      configList = state.activeRunData.config;
+    } else if (state.labSchema?.presets?.standard_demo && state.labSchema.presets.standard_demo.length > 0) {
+      configList = state.labSchema.presets.standard_demo;
+    } else {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-muted" style="text-align:center; padding:1.5rem;"><span class="dot-pulse"></span> Loading test scenarios...</td></tr>`;
+      try {
+        const res = await fetch('/api/boundary-lab/schema');
+        if (res.ok) {
+          const data = await res.json();
+          state.labSchema = data;
+          configList = data.presets?.standard_demo || [];
+        }
+      } catch (e) {
+        console.error('Failed to load scenarios fallback:', e);
+      }
+    }
   }
+
+  if (!configList || configList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-muted" style="text-align:center; padding:1.5rem;">No configured test scenarios available.</td></tr>`;
+    return;
+  }
+
   let html = '';
   configList.forEach(tc => {
-    const isNeg = tc.is_negative_control || tc.test_id === 'T4';
-    const testId = escapeHtml(tc.test_id);
-    const role = escapeHtml(tc.role);
-    const path = escapeHtml(tc.target_path);
-    const exp = escapeHtml(tc.expected_outcome);
-    const desc = escapeHtml(tc.test_description);
+    const isNeg = Boolean(tc.is_negative_control || tc.test_id === 'T4');
+    const testId = escapeHtml(tc.test_id || '—');
+    const role = escapeHtml(tc.role || '—');
+    const path = escapeHtml(tc.target_path || '—');
+    const exp = escapeHtml(tc.expected_outcome || 'UNKNOWN');
+    const expLower = String(tc.expected_outcome || '').toLowerCase();
+    const expClass = expLower === 'allow' ? 'pill-allow' : 'pill-deny';
+    const desc = escapeHtml(tc.test_description || '—');
 
     html += `
       <tr>
         <td class="mono font-bold">${testId}</td>
         <td class="mono text-cyan">${role}</td>
         <td class="mono" style="font-size:0.8rem;">${path}</td>
-        <td><span class="mono pill-${exp.toLowerCase()}">${exp}</span></td>
+        <td><span class="mono ${expClass}">${exp}</span></td>
         <td>${isNeg ? '<span class="badge badge-warn">NEGATIVE CONTROL</span>' : '<span class="text-muted">Standard</span>'}</td>
         <td style="font-size:0.85rem; color:var(--text-secondary);">${desc}</td>
       </tr>
@@ -699,24 +769,33 @@ async function triggerRun(mode = 'auto') {
 }
 
 // Boundary Lab
-async function fetchBoundaryLabSchema() {
+async function fetchBoundaryLabSchema(forceRefresh = false) {
+  const tbody = document.getElementById('tbody-lab-fixtures');
+  if (tbody && (!state.labSchema || forceRefresh)) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-muted" style="text-align:center; padding:1.5rem;"><span class="dot-pulse"></span> Loading sandbox fixtures...</td></tr>`;
+  }
   try {
     const res = await fetch('/api/boundary-lab/schema');
-    if (!res.ok) return;
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
     const data = await res.json();
     state.labSchema = data;
 
-    const tbody = document.getElementById('tbody-lab-fixtures');
     if (tbody && data.fixtures) {
+      if (data.fixtures.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-muted" style="text-align:center; padding:1.5rem;">No configured fixtures found.</td></tr>`;
+        return;
+      }
       let html = '';
       data.fixtures.forEach(f => {
         html += `
           <tr>
-            <td class="mono font-bold text-cyan">${f.resource_id}</td>
-            <td class="mono">${f.path}</td>
-            <td class="mono">${f.owner}</td>
-            <td class="mono text-amber">${f.mode}</td>
-            <td style="font-size:0.85rem; color:var(--text-secondary);">${f.description}</td>
+            <td class="mono font-bold text-cyan">${escapeHtml(f.resource_id)}</td>
+            <td class="mono">${escapeHtml(f.path)}</td>
+            <td class="mono">${escapeHtml(f.owner)}</td>
+            <td class="mono text-amber">${escapeHtml(f.mode)}</td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(f.description)}</td>
           </tr>
         `;
       });
@@ -724,6 +803,17 @@ async function fetchBoundaryLabSchema() {
     }
   } catch (err) {
     console.error('Failed to load lab schema:', err);
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-red" style="text-align:center; padding:1.5rem;">
+            ⚠️ Failed to load sandbox fixture matrix: ${escapeHtml(err.message)}
+            <br>
+            <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" onclick="fetchBoundaryLabSchema(true)">↻ Retry</button>
+          </td>
+        </tr>
+      `;
+    }
   }
 }
 
@@ -829,37 +919,61 @@ async function submitBoundaryProbe() {
 }
 
 // Run History Table
-async function fetchRunsHistory() {
+async function fetchRunsHistory(forceRefresh = false) {
+  const tbody = document.getElementById('tbody-run-history');
+  if (tbody && (state.runsList.length === 0 || forceRefresh)) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-muted" style="text-align:center; padding:1.5rem;"><span class="dot-pulse"></span> Loading historical execution records...</td></tr>`;
+  }
   try {
     const res = await fetch('/api/runs');
-    if (!res.ok) return;
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
     const data = await res.json();
     state.runsList = data.runs || [];
 
-    const tbody = document.getElementById('tbody-run-history');
     if (!tbody) return;
 
     if (state.runsList.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-muted" style="text-align:center;">No history recorded yet.</td></tr>`;
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="text-muted" style="text-align:center; padding:2rem;">
+            No execution runs recorded yet. Click <strong>"Run Boundary Tests"</strong> above to evaluate sandbox boundaries.
+          </td>
+        </tr>
+      `;
       return;
     }
 
     let html = '';
     state.runsList.forEach(r => {
       const verif = r.evidence_integrity || {};
-      const verifBadge = verif.is_valid ? '<span class="badge badge-pass">VALID</span>' : '<span class="badge badge-fail">INVALID</span>';
+      const isValid = Boolean(verif.is_valid);
+      const verifBadge = isValid
+        ? '<span class="badge badge-pass">VALID</span>'
+        : '<span class="badge badge-fail">INVALID</span>';
+      const runId = escapeHtml(r.run_id || '');
+      const runIdShort = runId.length >= 8 ? runId.slice(0, 8) : runId;
+      const timeStr = escapeHtml(r.timestamp_utc ? r.timestamp_utc.slice(0, 19).replace('T', ' ') : '—');
+      const modeStr = escapeHtml(r.execution_mode || 'auto');
+      const totalTests = Number(r.total_tests) || 0;
+      const matches = Number(r.policy_matches) || 0;
+      const mismatches = Number(r.policy_mismatches) || 0;
+
       html += `
         <tr>
-          <td class="mono font-bold text-cyan" style="cursor:pointer;" onclick="selectRun('${r.run_id}')">${r.run_id.slice(0, 8)}...</td>
-          <td class="mono" style="font-size:0.8rem;">${r.timestamp_utc || ''}</td>
-          <td><span class="badge badge-info">${r.execution_mode || 'auto'}</span></td>
-          <td class="mono">${r.total_tests || 0}</td>
-          <td class="mono text-green">${r.policy_matches || 0}</td>
-          <td class="mono text-red">${r.policy_mismatches || 0}</td>
+          <td class="mono font-bold text-cyan" style="cursor:pointer;" onclick="selectRun('${runId}')" title="Inspect Run ${runId}">
+            ${runIdShort}...
+          </td>
+          <td class="mono" style="font-size:0.8rem;">${timeStr}</td>
+          <td><span class="badge badge-info">${modeStr}</span></td>
+          <td class="mono">${totalTests}</td>
+          <td class="mono text-green">${matches}</td>
+          <td class="mono text-red">${mismatches}</td>
           <td>${verifBadge}</td>
           <td>
-            <button class="btn btn-secondary btn-sm" onclick="selectRun('${r.run_id}')">Inspect</button>
-            <a class="btn btn-secondary btn-sm" href="/api/runs/${r.run_id}/evidence" target="_blank">&#128190;</a>
+            <button class="btn btn-secondary btn-sm" onclick="selectRun('${runId}')">Inspect</button>
+            <a class="btn btn-secondary btn-sm" href="/api/runs/${runId}/evidence" target="_blank" title="Export raw JSONL evidence">&#128190;</a>
           </td>
         </tr>
       `;
@@ -867,6 +981,17 @@ async function fetchRunsHistory() {
     tbody.innerHTML = html;
   } catch (err) {
     console.error('Failed to load history:', err);
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="text-red" style="text-align:center; padding:1.5rem;">
+            ⚠️ Failed to load run history: ${escapeHtml(err.message)}
+            <br>
+            <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" onclick="fetchRunsHistory(true)">↻ Retry</button>
+          </td>
+        </tr>
+      `;
+    }
   }
 }
 
@@ -874,6 +999,13 @@ async function selectRun(runId) {
   state.latestRunId = runId;
   const isHistorical = Boolean(state.systemStatus?.latest_run?.run_id && state.systemStatus.latest_run.run_id !== runId);
   await fetchRunDetails(runId, isHistorical);
+  try {
+    const stateRes = await fetch(`/api/runs/${runId}/status`);
+    if (stateRes.ok) {
+      const runState = await stateRes.json();
+      updateTimeline(runState);
+    }
+  } catch (_) {}
   navigateTo('overview');
 }
 
@@ -978,16 +1110,22 @@ async function executeRunComparison() {
 }
 
 // Violation Inspector
-async function renderInspector() {
+async function renderInspector(forceRefresh = false) {
+  const container = document.getElementById('inspector-findings-list');
+  if (container && forceRefresh) {
+    container.innerHTML = `<div class="text-muted" style="text-align:center; padding:2rem;"><span class="dot-pulse"></span> Loading policy findings...</div>`;
+  }
   try {
     const res = await fetch('/api/findings');
-    if (!res.ok) return;
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
     const data = await res.json();
     const findings = data.findings || [];
 
-    document.getElementById('inspector-count-badge').textContent = `${findings.length} Findings`;
+    const badgeEl = document.getElementById('inspector-count-badge');
+    if (badgeEl) badgeEl.textContent = `${findings.length} Findings`;
 
-    const container = document.getElementById('inspector-findings-list');
     if (!container) return;
 
     if (findings.length === 0) {
@@ -997,17 +1135,17 @@ async function renderInspector() {
 
     let html = '';
     findings.forEach(f => {
-      const isNeg = f.is_negative_control;
-      const findingId = escapeHtml(f.finding_id);
-      const runId = escapeHtml(f.run_id ? f.run_id.slice(0, 8) : '');
-      const worker = escapeHtml(f.worker);
-      const res = escapeHtml(f.resource);
-      const op = escapeHtml(f.operation);
-      const exp = escapeHtml(f.expected_outcome);
-      const obs = escapeHtml(f.observed_outcome);
-      const expl = escapeHtml(f.explanation);
-      const interp = escapeHtml(f.interpretation);
-      const step = escapeHtml(f.recommended_next_step);
+      const isNeg = Boolean(f.is_negative_control);
+      const findingId = escapeHtml(f.finding_id || 'FINDING');
+      const runId = escapeHtml(f.run_id ? f.run_id.slice(0, 8) : 'N/A');
+      const worker = escapeHtml(f.worker || 'unknown');
+      const res = escapeHtml(f.resource || 'unknown');
+      const op = escapeHtml(f.operation || 'unknown');
+      const exp = escapeHtml(f.expected_outcome || 'DENY');
+      const obs = escapeHtml(f.observed_outcome || 'ALLOW');
+      const expl = escapeHtml(f.explanation || '—');
+      const interp = escapeHtml(f.interpretation || '—');
+      const step = escapeHtml(f.recommended_next_step || '—');
 
       html += `
         <div class="finding-card ${isNeg ? 'negative-control' : ''}">
@@ -1039,6 +1177,15 @@ async function renderInspector() {
     container.innerHTML = html;
   } catch (err) {
     console.error('Failed to render inspector:', err);
+    if (container) {
+      container.innerHTML = `
+        <div class="text-red" style="text-align:center; padding:2rem;">
+          ⚠️ Failed to load inspector findings: ${escapeHtml(err.message)}
+          <br>
+          <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" onclick="renderInspector(true)">↻ Retry</button>
+        </div>
+      `;
+    }
   }
 }
 
@@ -1055,16 +1202,20 @@ function renderVaultAndVerification() {
 
   let html = '';
   records.forEach((r, idx) => {
-    const prevShort = escapeHtml(r.previous_record_hash.slice(0, 10) + '...');
-    const recShort = escapeHtml(r.record_hash.slice(0, 10) + '...');
-    const seq = escapeHtml(r.sequence_number);
-    const testId = escapeHtml(r.test_id);
-    const role = escapeHtml(r.role);
-    const op = escapeHtml(r.operation);
-    const act = escapeHtml(r.actual_outcome);
-    const res = escapeHtml(r.result);
-    const prevFull = escapeHtml(r.previous_record_hash);
-    const recFull = escapeHtml(r.record_hash);
+    const prevRaw = String(r.previous_record_hash || '—');
+    const recRaw = String(r.record_hash || '—');
+    const prevShort = escapeHtml(prevRaw.length > 10 ? prevRaw.slice(0, 10) + '...' : prevRaw);
+    const recShort = escapeHtml(recRaw.length > 10 ? recRaw.slice(0, 10) + '...' : recRaw);
+    const seq = escapeHtml(r.sequence_number ?? idx);
+    const testId = escapeHtml(r.test_id || '—');
+    const role = escapeHtml(r.role || '—');
+    const op = escapeHtml(r.operation || '—');
+    const act = escapeHtml(r.actual_outcome || 'UNKNOWN');
+    const actLower = String(r.actual_outcome || '').toLowerCase();
+    const actClass = actLower === 'allow' ? 'pill-allow' : (actLower === 'deny' ? 'pill-deny' : 'badge-fail');
+    const res = escapeHtml(r.result || 'UNKNOWN');
+    const prevFull = escapeHtml(prevRaw);
+    const recFull = escapeHtml(recRaw);
 
     html += `
       <tr style="cursor:pointer;" onclick="inspectRecord(${idx})">
@@ -1072,7 +1223,7 @@ function renderVaultAndVerification() {
         <td class="mono text-cyan">${testId}</td>
         <td class="mono">${role}</td>
         <td class="mono" style="font-size:0.8rem;">${op}</td>
-        <td><span class="mono pill-${act.toLowerCase()}">${act}</span></td>
+        <td><span class="mono ${actClass}">${act}</span></td>
         <td><span class="badge ${r.result === 'PASS' ? 'badge-pass' : 'badge-fail'}">${res}</span></td>
         <td class="mono text-muted" title="${prevFull}">${prevShort}</td>
         <td class="mono font-bold text-cyan" title="${recFull}">${recShort}</td>

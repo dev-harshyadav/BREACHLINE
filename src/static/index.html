@@ -447,20 +447,22 @@
         <!-- Known Fixtures & Access Matrix -->
         <div class="card">
           <div class="card-title">Configured Sandbox Fixture Matrix</div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Resource ID</th>
-                <th>Filesystem Path</th>
-                <th>Owner Identity</th>
-                <th>POSIX Mode</th>
-                <th>Security Purpose</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-lab-fixtures">
-              <!-- Populated dynamically from API -->
-            </tbody>
-          </table>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Resource ID</th>
+                  <th>Filesystem Path</th>
+                  <th>Owner Identity</th>
+                  <th>POSIX Mode</th>
+                  <th>Security Purpose</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-lab-fixtures">
+                <tr><td colspan="5" class="text-muted" style="text-align:center; padding:1.5rem;"><span class="dot-pulse"></span> Loading sandbox fixtures...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -477,21 +479,23 @@
             Test scenarios stimulate the environment to confirm both permitted operations and isolation barriers.
             Test T4 represents a deliberate negative control fixture to prove the harness catches boundary misconfigurations.
           </p>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Worker Role</th>
-                <th>Target Path</th>
-                <th>Expected</th>
-                <th>Negative Control?</th>
-                <th>Scenario Description</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-scenarios-list">
-              <!-- Populated dynamically -->
-            </tbody>
-          </table>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Worker Role</th>
+                  <th>Target Path</th>
+                  <th>Expected</th>
+                  <th>Negative Control?</th>
+                  <th>Scenario Description</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-scenarios-list">
+                <tr><td colspan="6" class="text-muted" style="text-align:center; padding:1.5rem;"><span class="dot-pulse"></span> Loading test scenarios...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -506,23 +510,25 @@
               &#8644; Compare Two Runs
             </button>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Run ID</th>
-                <th>Timestamp (UTC)</th>
-                <th>Mode</th>
-                <th>Total Tests</th>
-                <th>Policy Matches</th>
-                <th>Mismatches</th>
-                <th>Evidence Chain</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-run-history">
-              <!-- Populated dynamically -->
-            </tbody>
-          </table>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Run ID</th>
+                  <th>Timestamp (UTC)</th>
+                  <th>Mode</th>
+                  <th>Total Tests</th>
+                  <th>Policy Matches</th>
+                  <th>Mismatches</th>
+                  <th>Evidence Chain</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-run-history">
+                <tr><td colspan="8" class="text-muted" style="text-align:center; padding:1.5rem;"><span class="dot-pulse"></span> Loading historical execution records...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Comparison Container -->
@@ -699,11 +705,13 @@
       <section id="view-settings" class="view-section">
         <div class="card">
           <div class="card-title">Environment Diagnostics &amp; Runtime Settings</div>
-          <table class="data-table" style="margin-top:1rem;">
-            <tbody id="tbody-env-settings">
-              <!-- Populated dynamically -->
-            </tbody>
-          </table>
+          <div class="table-container">
+            <table class="data-table" style="margin-top:1rem;">
+              <tbody id="tbody-env-settings">
+                <tr><td colspan="2" class="text-muted" style="text-align:center; padding:1.25rem;"><span class="dot-pulse"></span> Loading environment diagnostics...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div class="card">

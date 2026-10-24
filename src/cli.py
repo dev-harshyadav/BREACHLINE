@@ -220,27 +220,45 @@ def is_port_in_use(host: str, port: int) -> bool:
             return True
 
 
+def find_next_free_port(host: str, start_port: int = 8008, max_attempts: int = 30) -> int:
+    """Find the first available free port, avoiding known Docker worker ports 8081 and 8082."""
+    candidate = start_port
+    reserved_worker_ports = {8081, 8082}
+    for _ in range(max_attempts):
+        if candidate not in reserved_worker_ports and not is_port_in_use(host, candidate):
+            return candidate
+        candidate += 1
+    return start_port + max_attempts
+
+
 def cmd_serve(args):
     """Start the BREACHLINE web workbench server."""
     import uvicorn
     host = getattr(args, "host", "127.0.0.1")
-    port = getattr(args, "port", 8000)
+    port = getattr(args, "port", 8008)
 
     if is_port_in_use(host, port):
-        print("========================================================", file=sys.stderr)
-        print(f"[PORT CONFLICT] Port {port} on {host} is already in use by another process.", file=sys.stderr)
-        print(f"To identify which process is listening on port {port}, run:", file=sys.stderr)
+        next_free = find_next_free_port(host, 8008 if port in (8000, 8008, 8009) else port + 1)
+        print("==============================================================================", file=sys.stderr)
+        print(f"[PORT OCCUPIED] Port {port} on {host} is currently in use.", file=sys.stderr)
+        print(f"To inspect the process listening on port {port}:", file=sys.stderr)
         print(f"  lsof -i :{port}", file=sys.stderr)
-        print("\nBREACHLINE does not terminate unrelated user processes.", file=sys.stderr)
-        print("To launch the BREACHLINE Security Workbench on another port, use:", file=sys.stderr)
-        alt_port = 8008 if port == 8000 else port + 1
-        print(f"  ./breachline serve --port {alt_port}", file=sys.stderr)
-        print("========================================================", file=sys.stderr)
+        print("\nBREACHLINE Port Architecture:", file=sys.stderr)
+        print(f"  - Frontend Workbench Port: {port} (Requested)", file=sys.stderr)
+        print("  - Docker Red Worker:       http://localhost:8081 (Container internal UID 1001)", file=sys.stderr)
+        print("  - Docker Blue Worker:      http://localhost:8082 (Container internal UID 1002)", file=sys.stderr)
+        print("\nNotice: BREACHLINE strictly avoids terminating unrelated user processes.", file=sys.stderr)
+        print(f"Next available free port detected: {next_free}", file=sys.stderr)
+        print(f"\nTo launch on the next available port, execute:", file=sys.stderr)
+        print(f"  ./breachline serve --port {next_free}", file=sys.stderr)
+        print("==============================================================================", file=sys.stderr)
         sys.exit(1)
 
     print("========================================================")
     print(f"  BREACHLINE SECURITY WORKBENCH STARTING")
     print(f"  URL: http://{host}:{port}")
+    print(f"  Worker Red:  http://127.0.0.1:8081")
+    print(f"  Worker Blue: http://127.0.0.1:8082")
     print("========================================================")
     uvicorn.run("src.server:app", host=host, port=port, log_level="info")
 
@@ -294,7 +312,7 @@ def main():
     # serve
     p_serve = subparsers.add_parser("serve", help="Start web workbench server")
     p_serve.add_argument("--host", default="127.0.0.1", help="Host interface")
-    p_serve.add_argument("--port", type=int, default=8000, help="Port number")
+    p_serve.add_argument("--port", type=int, default=8008, help="Port number (default: 8008)")
 
     args = parser.parse_args()
     if not args.command:
