@@ -47,12 +47,23 @@ function setupNavigation() {
   });
 }
 
-async function navigateTo(viewName) {
+let isNavigating = false;
+
+async function navigateTo(viewName, isFromHash = false) {
   if (!viewName) viewName = 'overview';
   try {
+    let activeSec = document.getElementById(`view-${viewName}`);
+    if (!activeSec) {
+      console.warn(`View section #view-${viewName} not found, falling back to overview`);
+      viewName = 'overview';
+      activeSec = document.getElementById('view-overview');
+    }
+
     state.currentView = viewName;
     if (window.location.hash !== `#${viewName}`) {
+      isNavigating = true;
       window.location.hash = viewName;
+      setTimeout(() => { isNavigating = false; }, 60);
     }
 
     document.querySelectorAll('.nav-link').forEach(l => {
@@ -67,12 +78,6 @@ async function navigateTo(viewName) {
       sec.classList.remove('active');
     });
 
-    let activeSec = document.getElementById(`view-${viewName}`);
-    if (!activeSec) {
-      console.warn(`View section #view-${viewName} not found, falling back to overview`);
-      viewName = 'overview';
-      activeSec = document.getElementById('view-overview');
-    }
     if (activeSec) {
       activeSec.classList.add('active');
     }
@@ -106,8 +111,16 @@ async function navigateTo(viewName) {
       await fetchRunsHistory();
     } else if (viewName === 'inspector') {
       await renderInspector();
-    } else if (viewName === 'vault' || viewName === 'verification') {
+    } else if (viewName === 'vault') {
       renderVaultAndVerification();
+    } else if (viewName === 'verification') {
+      renderVaultAndVerification();
+      if (state.latestRunId) {
+        const verCard = document.getElementById('verifier-output-card');
+        if (verCard && verCard.textContent.includes('Click "Execute Verification"')) {
+          runFullVerification();
+        }
+      }
     } else if (viewName === 'reports') {
       renderReportFrame();
     } else if (viewName === 'settings') {
@@ -121,11 +134,12 @@ async function navigateTo(viewName) {
 }
 
 function handleHashRouting() {
-  const hash = window.location.hash.replace('#', '');
+  if (isNavigating) return;
+  const hash = (window.location.hash || '').replace(/^#/, '').trim();
   if (hash && document.getElementById(`view-${hash}`)) {
-    navigateTo(hash);
-  } else if (!hash) {
-    navigateTo('overview');
+    navigateTo(hash, true);
+  } else {
+    navigateTo('overview', true);
   }
 }
 
@@ -279,6 +293,23 @@ async function refreshAll() {
     await fetchRunsHistory();
     await fetchBoundaryLabSchema();
     await renderInspector();
+
+    // Ensure active view gets freshly populated after status resolves
+    if (state.currentView === 'reports') {
+      renderReportFrame();
+    } else if (state.currentView === 'vault' || state.currentView === 'verification') {
+      renderVaultAndVerification();
+      if (state.currentView === 'verification' && state.latestRunId) {
+        const verCard = document.getElementById('verifier-output-card');
+        if (verCard && verCard.textContent.includes('Click "Execute Verification"')) {
+          runFullVerification();
+        }
+      }
+    } else if (state.currentView === 'scenarios') {
+      await renderScenariosTable();
+    } else if (state.currentView === 'settings') {
+      updateHeaderAndSidebar(state.systemStatus);
+    }
   } catch (err) {
     console.error('Failed to load status:', err);
     // Non-destructive notification: preserve last known data
@@ -301,23 +332,27 @@ async function refreshAll() {
 }
 
 function updateHeaderAndSidebar(status) {
-  const isDocker = status.docker_environment && status.docker_environment.available;
+  if (!status) return;
+  const isDocker = Boolean(status.docker_environment && status.docker_environment.available);
   const modeText = isDocker ? 'Docker Containerized (Isolated)' : 'Local POSIX Sandbox (Kernel DAC)';
   
-  document.getElementById('header-mode-text').textContent = modeText;
-  document.getElementById('sidebar-env-text').textContent = isDocker ? 'Docker Connected' : 'Local Sandbox Active';
+  const headerMode = document.getElementById('header-mode-text');
+  if (headerMode) headerMode.textContent = modeText;
+  const sidebarEnv = document.getElementById('sidebar-env-text');
+  if (sidebarEnv) sidebarEnv.textContent = isDocker ? 'Docker Connected' : 'Local Sandbox Active';
 
   // Settings view table
   const tbody = document.getElementById('tbody-env-settings');
   if (tbody) {
+    const sys = status.system_info || {};
     tbody.innerHTML = `
-      <tr><td>Host OS</td><td class="mono">${status.system_info.os} ${status.system_info.release}</td></tr>
-      <tr><td>Python Runtime</td><td class="mono">${status.system_info.python}</td></tr>
-      <tr><td>Execution Mode</td><td class="mono">${modeText}</td></tr>
-      <tr><td>Docker Status</td><td class="mono">${isDocker ? '<span class="text-green">Available</span>' : '<span class="text-amber">Offline / Unavailable</span>'}</td></tr>
-      <tr><td>Red Worker URL</td><td class="mono">${status.docker_environment?.red_worker?.url || 'N/A'}</td></tr>
-      <tr><td>Blue Worker URL</td><td class="mono">${status.docker_environment?.blue_worker?.url || 'N/A'}</td></tr>
-      <tr><td>Diagnostic Notice</td><td class="text-secondary" style="font-size:0.85rem;">${status.docker_environment?.message || ''}</td></tr>
+      <tr><td>Host OS</td><td class="mono">${escapeHtml(sys.os || 'Darwin')} ${escapeHtml(sys.release || '')}</td></tr>
+      <tr><td>Python Runtime</td><td class="mono">${escapeHtml(sys.python || '3.x')}</td></tr>
+      <tr><td>Execution Mode</td><td class="mono">${escapeHtml(modeText)}</td></tr>
+      <tr><td>Docker Status</td><td class="mono">${isDocker ? '<span class="text-green font-bold">Available &amp; Healthy</span>' : '<span class="text-amber font-bold">Offline / Unavailable</span>'}</td></tr>
+      <tr><td>Red Worker URL</td><td class="mono">${escapeHtml(status.docker_environment?.red_worker?.url || 'N/A')}</td></tr>
+      <tr><td>Blue Worker URL</td><td class="mono">${escapeHtml(status.docker_environment?.blue_worker?.url || 'N/A')}</td></tr>
+      <tr><td>Diagnostic Notice</td><td class="text-secondary" style="font-size:0.85rem;">${escapeHtml(status.docker_environment?.message || 'Ready')}</td></tr>
     `;
   }
 }
@@ -1418,7 +1453,45 @@ async function runTamperAttack(attackId) {
 // Reports View
 function renderReportFrame() {
   const iframe = document.getElementById('report-iframe');
-  if (state.latestRunId && iframe) {
-    iframe.src = `/api/runs/${state.latestRunId}/report?format=html`;
+  if (!iframe) return;
+  const runId = state.latestRunId || state.systemStatus?.latest_run?.run_id;
+  if (runId) {
+    iframe.src = `/api/runs/${runId}/report?format=html`;
+  } else {
+    iframe.srcdoc = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            background: #080d1a;
+            color: #94a3b8;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+          }
+          .empty-card {
+            background: #0f172a;
+            border: 1px solid #27354f;
+            border-radius: 8px;
+            padding: 2.5rem;
+            max-width: 480px;
+          }
+          h3 { color: #f8fafc; margin-bottom: 0.5rem; }
+          p { font-size: 0.9rem; line-height: 1.5; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="empty-card">
+          <h3>No Audit Report Available</h3>
+          <p>Execute a boundary evaluation run from the dashboard to generate comprehensive HTML, JSON, and text security audit reports.</p>
+        </div>
+      </body>
+      </html>
+    `;
   }
 }

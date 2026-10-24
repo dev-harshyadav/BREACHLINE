@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -9,15 +10,29 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
-*.log
-.DS_Store
-output/*.json
-output/*.txt
-output/*.jsonl
-output/*.html
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Runtime output and generated evidence
+output/runs/
+output/trust_anchors/
 output/tamper_scratch/
 output/local_sandbox/
+output/evidence.jsonl
+output/*.json
+output/*.txt
+output/*.log
+output/*.html
 !output/.gitkeep
+
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Locks
 *.lock
 .index.lock
-
