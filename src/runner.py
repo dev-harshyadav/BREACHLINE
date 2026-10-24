@@ -207,12 +207,26 @@ class TestRunner:
                 )
 
     def run_all(self, verify_workers: bool = True) -> Dict[str, Any]:
-        """Execute all configured boundary tests and record evidence."""
+        """Execute all configured boundary tests and record evidence across the 6-stage lifecycle."""
+        run_id = self.recorder.run_id
+        from src.lifecycle import RUN_LIFECYCLE, RunStage, RunStatus
+        from src.verifier import EvidenceVerifier
+
+        # --- STAGE 1: CONFIGURE ---
+        RUN_LIFECYCLE.init_run(run_id=run_id, mode=self.mode, total_tests=4)
+        RUN_LIFECYCLE.set_stage(
+            run_id,
+            RunStage.CONFIGURE,
+            "Loading boundary test scenarios, validating containment paths, and resolving worker endpoints.",
+            "running"
+        )
+
         test_cases = self.load_test_cases()
         self.effective_mode = self._determine_execution_mode(verify_workers)
+        RUN_LIFECYCLE.complete_stage(run_id, RunStage.CONFIGURE, "passed")
 
         print(f"\n========================================================")
-        print(f"  BREACHLINE EVALUATION HARNESS — RUN ID: {self.recorder.run_id}")
+        print(f"  BREACHLINE EVALUATION HARNESS — RUN ID: {run_id}")
         print(f"  MODE: {self.effective_mode.upper()} (OS Enforced: {self.is_os_enforced})")
         print(f"========================================================")
         print(f"Loaded {len(test_cases)} boundary test cases from {self.config_path}")
@@ -226,7 +240,7 @@ class TestRunner:
             print(f"[NOTICE] Running in EXPLICIT SIMULATION mode ({self.effective_mode}). Results are application-level role mocks, NOT OS-enforced.")
 
         summary: Dict[str, Any] = {
-            "run_id": self.recorder.run_id,
+            "run_id": run_id,
             "execution_mode": self.effective_mode,
             "is_os_enforced": self.is_os_enforced,
             "total": len(test_cases),
@@ -251,8 +265,17 @@ class TestRunner:
         print(f"{'TEST':<5} | {'ROLE':<12} | {'OPERATION':<12} | {'EXPECTED':<8} | {'ACTUAL':<8} | {'RESULT'}")
         print("-" * 75)
 
-        for tc in test_cases:
-            # 1. Validate scenario to prevent path traversal or invalid configurations
+        # Loop through each test case across EXECUTE -> OBSERVE -> COMPARE
+        for idx, tc in enumerate(test_cases, start=1):
+            # --- STAGE 2: EXECUTE ---
+            RUN_LIFECYCLE.set_stage(
+                run_id,
+                RunStage.EXECUTE,
+                f"Dispatching boundary probe {tc.test_id} ({idx}/{len(test_cases)}) to {tc.role} under {self.effective_mode} enforcement.",
+                "running"
+            )
+
+            # Validate scenario to prevent path traversal or invalid configurations
             val_ok, val_err = validate_boundary_scenario({
                 "test_id": tc.test_id,
                 "role": tc.role,
@@ -266,7 +289,6 @@ class TestRunner:
             if not val_ok:
                 res = {"exit_code": 126, "error": val_err, "is_execution_error": True}
             else:
-                # 2. Execute operation according to effective mode
                 if self.executor_override:
                     res = self.executor_override(tc.role, tc.operation, tc.target_path)
                 elif self.effective_mode == "docker":
@@ -299,12 +321,28 @@ class TestRunner:
                     # Simulated mode
                     res = execute_simulated_role_operation(tc.role, tc.operation, tc.target_path)
 
+            # --- STAGE 3: OBSERVE ---
+            RUN_LIFECYCLE.set_stage(
+                run_id,
+                RunStage.OBSERVE,
+                f"Capturing process exit codes, error streams, and DAC enforcement signals for {tc.test_id}.",
+                "running"
+            )
             exit_code = res.get("exit_code", 1) if isinstance(res, dict) else 125
 
-            # 3. Policy Evaluation (CRITICAL: Do NOT classify execution errors as successful denials!)
+            # --- STAGE 4: COMPARE ---
+            RUN_LIFECYCLE.set_stage(
+                run_id,
+                RunStage.COMPARE,
+                f"Evaluating observed outcome against security policy expectation '{tc.expected_outcome}' for {tc.test_id}.",
+                "running"
+            )
             actual_outcome, policy_result, execution_error_info = classify_execution_outcome(res, tc.expected_outcome)
 
-            if actual_outcome in ("ERROR", "TIMEOUT", "UNAVAILABLE"):
+            is_unexpected = (tc.expected_outcome == "DENY" and actual_outcome == "ALLOW")
+            is_exec_err = actual_outcome in ("ERROR", "TIMEOUT", "UNAVAILABLE")
+
+            if is_exec_err:
                 summary["execution_errors_count"] += 1
                 summary["execution_errors"].append({
                     "test_id": tc.test_id,
@@ -320,12 +358,12 @@ class TestRunner:
                 summary["passed"] += 1
             else:
                 summary["failed"] += 1
-                if tc.expected_outcome == "DENY" and actual_outcome == "ALLOW":
+                if is_unexpected:
                     summary["unexpected_access_count"] += 1
                     summary["findings"].append({
-                        "finding_id": f"FINDING-{tc.test_id}-{self.recorder.run_id[:8]}",
+                        "finding_id": f"FINDING-{tc.test_id}-{run_id[:8]}",
                         "test_id": tc.test_id,
-                        "run_id": self.recorder.run_id,
+                        "run_id": run_id,
                         "worker": tc.role,
                         "resource": tc.target_path,
                         "operation": tc.operation,
@@ -350,7 +388,7 @@ class TestRunner:
                         ),
                     })
 
-            # 4. Append to cryptographic evidence chain
+            # Append to cryptographic evidence chain
             full_op = f"{tc.operation} {tc.target_path}"
             rec = self.recorder.record_test(
                 test_id=tc.test_id,
@@ -364,6 +402,16 @@ class TestRunner:
             )
             summary["records"].append(rec.to_dict())
 
+            # Update lifecycle test progress
+            RUN_LIFECYCLE.update_test_progress(
+                run_id=run_id,
+                test_id=tc.test_id,
+                completed_count=idx,
+                is_pass=(policy_result == "PASS"),
+                is_unexpected=is_unexpected,
+                is_error=is_exec_err
+            )
+
             # Print readable status row
             badge = "[\033[92mPASS\033[0m]" if policy_result == "PASS" else "[\033[91mFAIL\033[0m]"
             print(
@@ -376,7 +424,19 @@ class TestRunner:
         print(f"Evidence logged to: {self.evidence_path}")
         print("========================================================\n")
 
-        # 5. Persist run to storage history
+        # Mark EXECUTE, OBSERVE, COMPARE completed
+        RUN_LIFECYCLE.complete_stage(run_id, RunStage.EXECUTE, "passed")
+        RUN_LIFECYCLE.complete_stage(run_id, RunStage.OBSERVE, "passed")
+        compare_state = "warn" if summary["failed"] > 0 else "passed"
+        RUN_LIFECYCLE.complete_stage(run_id, RunStage.COMPARE, compare_state)
+
+        # --- STAGE 5: RECORD ---
+        RUN_LIFECYCLE.set_stage(
+            run_id,
+            RunStage.RECORD,
+            "Sealing cryptographic hash-chain and persisting run records to durable storage.",
+            "running"
+        )
         try:
             test_cases_dicts = [
                 {
@@ -391,36 +451,77 @@ class TestRunner:
                 for t in test_cases
             ]
             persist_run(
-                run_id=self.recorder.run_id,
+                run_id=run_id,
                 test_cases=test_cases_dicts,
                 records=summary["records"],
                 summary=summary,
                 execution_mode=self.effective_mode,
                 environment_info=summary["environment_info"],
             )
+            RUN_LIFECYCLE.complete_stage(run_id, RunStage.RECORD, "passed")
         except Exception as e:
+            RUN_LIFECYCLE.complete_stage(run_id, RunStage.RECORD, "failed")
             print(f"[RUNNER STORAGE WARNING] Could not persist run to history: {e}", file=sys.stderr)
 
+        # --- STAGE 6: VERIFY ---
+        RUN_LIFECYCLE.set_stage(
+            run_id,
+            RunStage.VERIFY,
+            "Executing independent mathematical verification of evidence chain and trust anchor.",
+            "running"
+        )
+        verif = EvidenceVerifier.verify_file(str(self.evidence_path))
+        summary["evidence_valid"] = verif.is_valid
+        summary["evidence_integrity"] = {
+            "is_valid": verif.is_valid,
+            "total_records": verif.total_records,
+            "error_type": verif.error_type,
+            "error_message": verif.error_message,
+            "anchor_status": verif.anchor_status,
+        }
+
+        if verif.is_valid:
+            RUN_LIFECYCLE.complete_stage(run_id, RunStage.VERIFY, "passed")
+        else:
+            RUN_LIFECYCLE.complete_stage(run_id, RunStage.VERIFY, "failed")
+
+        # Determine final status
+        if summary["execution_errors_count"] > 0 or not verif.is_valid:
+            final_status = RunStatus.FAILED
+        elif summary["failed"] > 0:
+            final_status = RunStatus.COMPLETED_WITH_FAILURES
+        else:
+            final_status = RunStatus.COMPLETED
+
+        RUN_LIFECYCLE.finish_run(run_id, final_status, summary)
         return summary
 
 
 def main():
     config_file = DEFAULT_CONFIG_PATH
     mode = "auto"
-    if len(sys.argv) > 1:
-        for arg in sys.argv[1:]:
-            if arg.endswith(".json") and os.path.exists(arg):
-                config_file = arg
-            elif arg in ("--docker", "docker"):
-                mode = "docker"
-            elif arg in ("--local_os", "local_os"):
-                mode = "local_os"
-            elif arg in ("--simulated", "simulated"):
-                mode = "simulated"
-            elif arg in ("--local_sandbox", "local_sandbox"):
-                mode = "local_sandbox"
-            elif arg in ("--demo", "demo"):
-                mode = "demo"
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg in ("--mode", "-m") and i + 1 < len(sys.argv):
+            mode = sys.argv[i + 1]
+            i += 2
+            continue
+        elif arg.startswith("--mode="):
+            mode = arg.split("=", 1)[1]
+        elif arg.endswith(".json") and os.path.exists(arg):
+            config_file = arg
+        elif arg in ("--docker", "docker"):
+            mode = "docker"
+        elif arg in ("--local_os", "local_os"):
+            mode = "local_os"
+        elif arg in ("--simulated", "simulated"):
+            mode = "simulated"
+        elif arg in ("--local_sandbox", "local_sandbox"):
+            mode = "local_sandbox"
+        elif arg in ("--demo", "demo"):
+            mode = "demo"
+        i += 1
 
     runner = TestRunner(config_path=config_file, mode=mode)
     try:

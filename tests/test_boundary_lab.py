@@ -97,3 +97,111 @@ def test_local_sandbox_execution_dac_enforcement():
     assert res_sim_red["is_os_enforced"] is False
     assert res_sim_red["exit_code"] == 1
     assert "NOT OS ENFORCED" in res_sim_red["simulation_notice"]
+
+
+def test_boundary_probe_api_simulated_mode():
+    """Verify interactive probe in simulated mode returns explicit simulation warning."""
+    from fastapi.testclient import TestClient
+    from src.server import app
+
+    client = TestClient(app)
+    res = client.post("/api/boundary-lab/probe", json={
+        "role": "red-worker",
+        "operation": "file:read",
+        "target_path": "/data/red/red_secret.txt",
+        "expected_outcome": "ALLOW",
+        "mode": "simulated",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["effective_mode"] == "simulated"
+    assert data["is_os_enforced"] is False
+    assert data["simulation_warning"] is not None
+    assert "EXPLICIT SIMULATION" in data["simulation_warning"]
+    assert data["actual_outcome"] == "ALLOW"
+    assert data["policy_result"] == "PASS"
+
+
+def test_boundary_probe_missing_file_classified_as_error():
+    """Verify that a missing file is classified as ERROR, never DENY or PASS."""
+    from fastapi.testclient import TestClient
+    from src.server import app
+
+    client = TestClient(app)
+    res = client.post("/api/boundary-lab/probe", json={
+        "role": "red-worker",
+        "operation": "file:read",
+        "target_path": "/data/red/non_existent_fixture.txt",
+        "expected_outcome": "DENY",
+        "mode": "auto",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["actual_outcome"] == "ERROR"
+    assert data["policy_result"] == "FAIL"
+
+
+def test_boundary_probe_unexpected_access_is_fail():
+    """Verify unauthorized access is recorded as policy FAIL even if the syscall succeeds."""
+    from fastapi.testclient import TestClient
+    from src.server import app
+
+    client = TestClient(app)
+    res = client.post("/api/boundary-lab/probe", json={
+        "role": "red-worker",
+        "operation": "file:read",
+        "target_path": "/data/leaky/blue_leaked.txt",
+        "expected_outcome": "DENY",
+        "mode": "auto",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["actual_outcome"] == "ALLOW"
+    assert data["policy_result"] == "FAIL"
+    assert data["is_unexpected_access"] is True
+
+
+def test_boundary_probe_docker_routing():
+    """Verify Docker worker routing and genuine UID reporting when workers are active."""
+    from fastapi.testclient import TestClient
+    from src.runner import check_docker_environment
+    from src.server import app
+
+    docker_env = check_docker_environment()
+    if not docker_env["available"]:
+        pytest.skip("Docker worker containers are offline; skipping live Docker probe test.")
+
+    client = TestClient(app)
+
+    # 1. Red worker accessing own secret
+    red_res = client.post("/api/boundary-lab/probe", json={
+        "role": "red-worker",
+        "operation": "file:read",
+        "target_path": "/data/red/red_secret.txt",
+        "expected_outcome": "ALLOW",
+        "mode": "docker",
+    })
+    assert red_res.status_code == 200
+    red_data = red_res.json()
+    assert red_data["observed_uid"] == 1001
+    assert red_data["observed_gid"] == 1001
+    assert red_data["is_os_enforced"] is True
+    assert red_data["actual_outcome"] == "ALLOW"
+    assert red_data["policy_result"] == "PASS"
+
+    # 2. Red worker accessing blue secret -> OS DAC denial
+    cross_res = client.post("/api/boundary-lab/probe", json={
+        "role": "red-worker",
+        "operation": "file:read",
+        "target_path": "/data/blue/blue_secret.txt",
+        "expected_outcome": "DENY",
+        "mode": "docker",
+    })
+    assert cross_res.status_code == 200
+    cross_data = cross_res.json()
+    assert cross_data["observed_uid"] == 1001
+    assert cross_data["is_os_enforced"] is True
+    assert cross_data["actual_outcome"] == "DENY"
+    assert cross_data["policy_result"] == "PASS"
+    assert "Permission denied" in cross_data["execution"]["error"]
+

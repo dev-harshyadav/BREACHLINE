@@ -1,6 +1,81 @@
 {
   "runs": [
     {
+      "run_id": "run_20261024_080309_4ffdf6",
+      "timestamp_utc": "2026-10-24T08:03:09.568436+00:00",
+      "finish_time_utc": "2026-10-24T08:03:09.577468+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-24T08:03:09.565410+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      },
+      "trust_anchor_status": "COMMITTED"
+    },
+    {
+      "run_id": "225f9c9e-c3af-49f0-a3fb-593475e55033",
+      "timestamp_utc": "2026-10-24T07:57:16.449034+00:00",
+      "finish_time_utc": "2026-10-24T07:57:16.453756+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-24T07:57:16.447538+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      },
+      "trust_anchor_status": "COMMITTED"
+    },
+    {
+      "run_id": "e490e4db-d7ce-4457-96d4-138799b9e3af",
+      "timestamp_utc": "2026-10-24T07:54:17.719390+00:00",
+      "finish_time_utc": "2026-10-24T07:54:17.729955+00:00",
+      "execution_mode": "docker",
+      "environment_info": {
+        "os": "Darwin",
+        "release": "27.0.0",
+        "python": "3.14.2",
+        "effective_mode": "docker",
+        "is_os_enforced": true,
+        "timestamp_utc": "2026-10-24T07:54:17.715626+00:00"
+      },
+      "total_tests": 4,
+      "policy_matches": 3,
+      "policy_mismatches": 1,
+      "unexpected_access_count": 1,
+      "evidence_integrity": {
+        "is_valid": true,
+        "total_records": 4,
+        "error_type": null,
+        "error_message": null
+      },
+      "trust_anchor_status": "COMMITTED"
+    },
+    {
       "run_id": "11df5d95-638e-448e-ac35-4e29cc22f8a3",
       "timestamp_utc": "2026-10-24T06:56:08.064165+00:00",
       "finish_time_utc": "2026-10-24T06:56:08.076916+00:00",
@@ -1193,5 +1268,5 @@
       }
     }
   ],
-  "updated_at": "2026-10-24T06:56:08.082426+00:00"
+  "updated_at": "2026-10-24T08:03:09.581760+00:00"
 }

@@ -12,11 +12,14 @@ from pathlib import Path
 import platform
 import sys
 import tempfile
+import queue
+import threading
 from typing import Any, Dict, List, Optional
+import urllib.error
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -28,10 +31,11 @@ from src.boundary_lab import (
     validate_boundary_scenario,
 )
 from src.classification import classify_execution_outcome
-from src.local_sandbox import execute_local_operation, setup_local_sandbox
+from src.lifecycle import RUN_LIFECYCLE, RunStage, RunStatus
+from src.local_sandbox import execute_local_operation, execute_local_os_operation, execute_simulated_role_operation, setup_local_sandbox
 from src.models import GENESIS_HASH, HASHED_FIELDS, SCHEMA_VERSION, TestCase
 from src.report import DEFAULT_REPORT_HTML_PATH, DEFAULT_REPORT_JSON_PATH, generate_report
-from src.runner import TestRunner, check_docker_environment
+from src.runner import TestRunner, check_docker_environment, execute_remote_worker, get_worker_url
 from src.storage import (
     compare_runs,
     get_latest_run,
@@ -70,16 +74,18 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ExecuteRunRequest(BaseModel):
-    mode: str = Field(default="auto", description="'auto', 'docker', 'local_sandbox', or 'demo'")
+    mode: str = Field(default="auto", description="'auto', 'docker', 'local_sandbox', 'simulated', 'local_os', or 'demo'")
     test_cases: Optional[List[Dict[str, Any]]] = Field(default=None, description="Custom test scenario list")
+    async_run: bool = Field(default=False, description="If true, execute in background thread and stream progress")
 
 
 class ProbeRequest(BaseModel):
-    role: str
-    operation: str
-    target_path: str
-    expected_outcome: str = "DENY"
-    test_description: str = "Custom boundary probe"
+    role: str = Field(description="'red-worker', 'blue-worker', or 'eval-monitor'")
+    operation: str = Field(default="file:read", description="e.g. 'file:read'")
+    target_path: str = Field(description="e.g. '/data/red/red_secret.txt'")
+    expected_outcome: str = Field(default="DENY", description="'ALLOW' or 'DENY'")
+    test_description: str = Field(default="Custom boundary probe", description="Description")
+    mode: str = Field(default="auto", description="'docker', 'auto', 'local_os', or 'simulated'")
 
 
 class CompareRequest(BaseModel):
@@ -99,10 +105,11 @@ class TamperRequest(BaseModel):
 
 @app.get("/api/status")
 def get_system_status() -> Dict[str, Any]:
-    """Retrieve runtime diagnostics, Docker status, and summary metrics."""
+    """Retrieve runtime diagnostics, Docker status, active run state, and summary metrics."""
     docker_status = check_docker_environment()
     runs = load_runs_index()
     latest = runs[0] if runs else None
+    active_run = RUN_LIFECYCLE.get_active_run()
 
     # Calculate aggregate stats
     total_runs = len(runs)
@@ -132,6 +139,7 @@ def get_system_status() -> Dict[str, Any]:
             "server_time_utc": datetime.now(timezone.utc).isoformat(),
         },
         "docker_environment": docker_status,
+        "active_run": active_run,
         "metrics": {
             **cumulative,
             "cumulative": cumulative,
@@ -147,6 +155,68 @@ def list_all_runs() -> Dict[str, Any]:
     return {"runs": runs, "count": len(runs)}
 
 
+@app.get("/api/runs/active")
+def get_active_run_endpoint() -> Dict[str, Any]:
+    """Retrieve currently active test run if one is executing."""
+    active = RUN_LIFECYCLE.get_active_run()
+    return {"active_run": active, "is_running": active is not None}
+
+
+@app.get("/api/runs/{run_id}/status")
+def get_run_lifecycle_status(run_id: str) -> Dict[str, Any]:
+    """Retrieve live lifecycle progress or historical state of a specific test run."""
+    if not is_safe_run_id(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run_id format.")
+    state = RUN_LIFECYCLE.get_run_state(run_id)
+    if not state:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return state
+
+
+@app.get("/api/runs/{run_id}/stream")
+def stream_run_lifecycle(run_id: str) -> StreamingResponse:
+    """Stream real-time run lifecycle transitions via Server-Sent Events (SSE)."""
+    if not is_safe_run_id(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run_id format.")
+
+    state = RUN_LIFECYCLE.get_run_state(run_id)
+    if not state:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+
+    def event_generator():
+        # Yield initial state
+        yield f"data: {json.dumps(state)}\n\n"
+        if state.get("status") in (RunStatus.COMPLETED, RunStatus.COMPLETED_WITH_FAILURES, RunStatus.FAILED, RunStatus.CANCELLED):
+            return
+
+        q = RUN_LIFECYCLE.subscribe(run_id)
+        try:
+            while True:
+                try:
+                    data = q.get(timeout=1.0)
+                    yield f"data: {data}\n\n"
+                    parsed = json.loads(data)
+                    if parsed.get("current_stage") == RunStage.FINISHED or parsed.get("status") in (
+                        RunStatus.COMPLETED, RunStatus.COMPLETED_WITH_FAILURES, RunStatus.FAILED, RunStatus.CANCELLED
+                    ):
+                        break
+                except queue.Empty:
+                    # Keep-alive heartbeat
+                    yield ": heartbeat\n\n"
+        finally:
+            RUN_LIFECYCLE.unsubscribe(run_id, q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
 @app.get("/api/runs/{run_id}")
 def get_run_details(run_id: str) -> Dict[str, Any]:
     """Retrieve full details of a specific test run."""
@@ -157,8 +227,8 @@ def get_run_details(run_id: str) -> Dict[str, Any]:
 
 
 @app.post("/api/runs/execute")
-def trigger_test_run(req: ExecuteRunRequest = Body(...)) -> Dict[str, Any]:
-    """Execute a boundary test run and persist evidence."""
+def trigger_test_run(req: ExecuteRunRequest = Body(...)) -> Any:
+    """Execute a boundary test run and persist evidence. Supports sync or async streaming execution."""
     valid_modes = {"auto", "docker", "local_sandbox", "simulated", "local_os", "demo"}
     if req.mode not in valid_modes:
         raise HTTPException(
@@ -181,6 +251,35 @@ def trigger_test_run(req: ExecuteRunRequest = Body(...)) -> Dict[str, Any]:
             json.dump(req.test_cases, f, indent=2)
             temp_config = f.name
             config_file = temp_config
+
+    if req.async_run:
+        # Generate unique run ID for async tracking
+        run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}"
+        num_tests = len(req.test_cases) if req.test_cases else 4
+        RUN_LIFECYCLE.init_run(run_id=run_id, mode=req.mode, total_tests=num_tests)
+
+        def _bg_runner():
+            try:
+                runner = TestRunner(config_path=config_file, mode=req.mode, run_id=run_id)
+                runner.run_all(verify_workers=False)
+                generate_report(evidence_path=str(runner.evidence_path))
+            except Exception as e:
+                RUN_LIFECYCLE.finish_run(run_id, RunStatus.FAILED, error_message=str(e))
+            finally:
+                if temp_config and os.path.exists(temp_config):
+                    os.remove(temp_config)
+
+        threading.Thread(target=_bg_runner, daemon=True).start()
+        return JSONResponse(
+            status_code=202,
+            content={
+                "success": True,
+                "run_id": run_id,
+                "status": "RUNNING",
+                "async": True,
+                "message": f"Run '{run_id}' dispatched asynchronously.",
+            }
+        )
 
     try:
         runner = TestRunner(config_path=config_file, mode=req.mode)
@@ -415,7 +514,7 @@ def get_lab_schema() -> Dict[str, Any]:
 
 @app.post("/api/boundary-lab/probe")
 def execute_boundary_probe(probe: ProbeRequest = Body(...)) -> Dict[str, Any]:
-    """Execute a single interactive boundary probe under POSIX DAC enforcement."""
+    """Execute a single interactive boundary probe under POSIX DAC enforcement or explicit simulation."""
     # 1. Validate probe parameters strictly
     scenario_dict = {
         "test_id": "CUSTOM-PROBE",
@@ -429,9 +528,102 @@ def execute_boundary_probe(probe: ProbeRequest = Body(...)) -> Dict[str, Any]:
     if not val_ok:
         raise HTTPException(status_code=400, detail=val_err)
 
-    # 2. Execute against local sandbox
-    res = execute_local_operation(probe.role, probe.operation, probe.target_path)
+    mode = probe.mode.lower()
+    res: Dict[str, Any] = {}
+    effective_mode = mode
+    is_os_enforced = False
+    simulation_warning: Optional[str] = None
+    enforcement_mechanism = "Unknown"
+
+    if mode == "simulated":
+        res = execute_simulated_role_operation(probe.role, probe.operation, probe.target_path)
+        effective_mode = "simulated"
+        is_os_enforced = False
+        simulation_warning = "⚠️ EXPLICIT SIMULATION MODE: Executed via application-level role emulation. Real OS Linux Kernel POSIX DAC enforcement was NOT exercised."
+        enforcement_mechanism = "Application Role Emulation (Simulated)"
+
+    elif mode == "local_os":
+        res = execute_local_os_operation(probe.operation, probe.target_path)
+        effective_mode = "local_os"
+        is_os_enforced = True
+        simulation_warning = None
+        enforcement_mechanism = "Host OS POSIX Permissions"
+
+    elif mode in ("docker", "auto"):
+        # Check if role has a dedicated Docker worker container
+        if probe.role not in ("red-worker", "blue-worker"):
+            res = {
+                "exit_code": 125,
+                "error": f"Role '{probe.role}' does not have a dedicated Docker worker container.",
+                "is_unavailable": True,
+                "is_execution_error": True,
+                "uid": None,
+                "gid": None,
+                "is_os_enforced": False,
+            }
+            effective_mode = "docker"
+            is_os_enforced = False
+            enforcement_mechanism = "None (No Worker for Role)"
+        else:
+            try:
+                worker_url = get_worker_url(probe.role)
+                res = execute_remote_worker(worker_url, probe.operation, probe.target_path, timeout=5.0)
+                effective_mode = "docker"
+                is_os_enforced = res.get("is_os_enforced", True)
+                simulation_warning = None
+                enforcement_mechanism = res.get("enforcement_mechanism", "Linux Kernel POSIX DAC")
+            except urllib.error.URLError as e:
+                # Never silently fall back to simulation
+                res = {
+                    "exit_code": 125,
+                    "error": f"Worker container connection failed: {e}. Docker worker ({probe.role}) is unreachable.",
+                    "is_unavailable": True,
+                    "is_execution_error": True,
+                    "uid": None,
+                    "gid": None,
+                    "is_os_enforced": False,
+                }
+                effective_mode = "docker"
+                is_os_enforced = False
+                simulation_warning = "⚠️ Container unreachable. Real OS DAC enforcement could not be exercised."
+                enforcement_mechanism = "None (Worker Offline)"
+            except TimeoutError as e:
+                res = {
+                    "exit_code": 124,
+                    "error": f"Worker execution timed out (5.0s): {e}",
+                    "is_timeout": True,
+                    "is_execution_error": True,
+                    "uid": None,
+                    "gid": None,
+                    "is_os_enforced": False,
+                }
+                effective_mode = "docker"
+                is_os_enforced = False
+                enforcement_mechanism = "None (Timeout)"
+            except Exception as e:
+                res = {
+                    "exit_code": 125,
+                    "error": f"Worker execution error: {e}",
+                    "is_execution_error": True,
+                    "uid": None,
+                    "gid": None,
+                    "is_os_enforced": False,
+                }
+                effective_mode = "docker"
+                is_os_enforced = False
+                enforcement_mechanism = "None (Error)"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid probe execution mode '{mode}'. Must be one of: ['docker', 'auto', 'local_os', 'simulated']"
+        )
+
+    # Classify outcome strictly using standard classification rules
     actual_outcome, policy_result, error_detail = classify_execution_outcome(res, probe.expected_outcome)
+
+    observed_uid = res.get("uid")
+    observed_gid = res.get("gid")
+    is_unexpected = (probe.expected_outcome == "DENY" and actual_outcome == "ALLOW")
 
     return {
         "probe": scenario_dict,
@@ -439,7 +631,14 @@ def execute_boundary_probe(probe: ProbeRequest = Body(...)) -> Dict[str, Any]:
         "actual_outcome": actual_outcome,
         "policy_result": policy_result,
         "error_detail": error_detail,
-        "is_unexpected_access": (probe.expected_outcome == "DENY" and actual_outcome == "ALLOW"),
+        "is_unexpected_access": is_unexpected,
+        "observed_uid": observed_uid,
+        "observed_gid": observed_gid,
+        "worker_role": probe.role,
+        "effective_mode": effective_mode,
+        "is_os_enforced": is_os_enforced,
+        "enforcement_mechanism": enforcement_mechanism,
+        "simulation_warning": simulation_warning,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -138,8 +138,83 @@
             </svg>
             <div class="visual-legend"><span><i class="legend-dot violet"></i> Policy checkpoint</span><span><i class="legend-dot muted"></i> Protected surface</span><span class="mono">SHA-256 / JSONL</span></div>
           </div>
-        </section>
-        <div class="workflow-strip" aria-label="Execution workflow"><span>CONFIGURE</span><b>→</b><span>EXECUTE</span><b>→</b><span>OBSERVE</span><b>→</b><span>COMPARE</span><b>→</b><span>RECORD</span><b>→</b><span>VERIFY</span></div>
+        <!-- Real-Time 6-Stage Execution Pipeline Timeline -->
+        <div class="timeline-card" id="execution-timeline-card" aria-label="Real-time execution pipeline">
+          <div class="timeline-header">
+            <div class="timeline-title-group">
+              <span class="timeline-badge status-idle" id="timeline-run-badge">STATUS: IDLE</span>
+              <h3 class="timeline-title">Execution Pipeline &amp; Stage Verifier</h3>
+            </div>
+            <div class="timeline-meta-group">
+              <div class="timeline-meta-item">
+                <span class="meta-label">RUN IDENTIFIER</span>
+                <span class="meta-value mono text-cyan" id="timeline-run-id">No active run</span>
+              </div>
+              <div class="timeline-meta-item">
+                <span class="meta-label">COMPLETED PROBES</span>
+                <span class="meta-value mono" id="timeline-progress-tests">0 / 0</span>
+              </div>
+              <div class="timeline-meta-item">
+                <span class="meta-label">CURRENT PROBE</span>
+                <span class="meta-value mono text-amber" id="timeline-current-test">—</span>
+              </div>
+              <div class="timeline-meta-item">
+                <span class="meta-label">ELAPSED TIME</span>
+                <span class="meta-value mono" id="timeline-elapsed">0.0s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Progressive 6-Stage Connecting Track -->
+          <div class="timeline-track-container" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="6">
+            <div class="timeline-connecting-line">
+              <div class="timeline-line-fill" id="timeline-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div class="timeline-nodes-row">
+              <div class="timeline-node pending" id="stage-node-CONFIGURE" data-stage="CONFIGURE">
+                <div class="node-circle"><span class="node-idx">1</span></div>
+                <div class="node-label">CONFIGURE</div>
+                <div class="node-status" id="stage-status-CONFIGURE">Pending</div>
+              </div>
+              <div class="timeline-node pending" id="stage-node-EXECUTE" data-stage="EXECUTE">
+                <div class="node-circle"><span class="node-idx">2</span></div>
+                <div class="node-label">EXECUTE</div>
+                <div class="node-status" id="stage-status-EXECUTE">Pending</div>
+              </div>
+              <div class="timeline-node pending" id="stage-node-OBSERVE" data-stage="OBSERVE">
+                <div class="node-circle"><span class="node-idx">3</span></div>
+                <div class="node-label">OBSERVE</div>
+                <div class="node-status" id="stage-status-OBSERVE">Pending</div>
+              </div>
+              <div class="timeline-node pending" id="stage-node-COMPARE" data-stage="COMPARE">
+                <div class="node-circle"><span class="node-idx">4</span></div>
+                <div class="node-label">COMPARE</div>
+                <div class="node-status" id="stage-status-COMPARE">Pending</div>
+              </div>
+              <div class="timeline-node pending" id="stage-node-RECORD" data-stage="RECORD">
+                <div class="node-circle"><span class="node-idx">5</span></div>
+                <div class="node-label">RECORD</div>
+                <div class="node-status" id="stage-status-RECORD">Pending</div>
+              </div>
+              <div class="timeline-node pending" id="stage-node-VERIFY" data-stage="VERIFY">
+                <div class="node-circle"><span class="node-idx">6</span></div>
+                <div class="node-label">VERIFY</div>
+                <div class="node-status" id="stage-status-VERIFY">Pending</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage Explanation and Work-in-Progress Indicator -->
+          <div class="timeline-footer">
+            <div class="timeline-live-indicator" id="timeline-moving-indicator" style="display:none;">
+              <span class="indicator-pulse"></span>
+              <span class="mono" id="timeline-live-text">RUNNING</span>
+            </div>
+            <div class="timeline-explanation" id="timeline-stage-explanation">
+              Pipeline idle. Select "Run Boundary Tests" to dispatch probes across configured tenant boundaries.
+            </div>
+          </div>
+        </div>
         
         <div class="callout-box callout-info">
           <div>
@@ -269,6 +344,17 @@
               </div>
 
               <div class="form-group">
+                <label class="form-label">Execution Environment / Mode</label>
+                <select class="form-control" id="probe-mode">
+                  <option value="docker">Docker Worker (Real Linux Kernel POSIX DAC — UID 1001/1002)</option>
+                  <option value="simulated">Explicit Simulation (Offline Application Mock — NOT OS-Enforced)</option>
+                  <option value="local_os">Local Host POSIX (Host Kernel Enforcement)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.25rem;">
+              <div class="form-group">
                 <label class="form-label">Operation Type</label>
                 <select class="form-control" id="probe-operation">
                   <option value="file:read">file:read (Read target file content)</option>
@@ -276,31 +362,38 @@
                   <option value="dir:list">dir:list (Enumerate directory contents)</option>
                 </select>
               </div>
-            </div>
-
-            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:1.25rem;">
-              <div class="form-group">
-                <label class="form-label">Target Resource Path (Strictly bounded to /data/)</label>
-                <select class="form-control" id="probe-path">
-                  <option value="/data/red/red_secret.txt">/data/red/red_secret.txt (Owner: 1001, Mode: 0600)</option>
-                  <option value="/data/blue/blue_secret.txt">/data/blue/blue_secret.txt (Owner: 1002, Mode: 0600)</option>
-                  <option value="/data/leaky/blue_leaked.txt">/data/leaky/blue_leaked.txt (Owner: 1002, Mode: 0644 — Negative Control)</option>
-                  <option value="/data/shared/dataset.csv">/data/shared/dataset.csv (Owner: 1000, Mode: 0640)</option>
-                </select>
-              </div>
 
               <div class="form-group">
                 <label class="form-label">Expected Outcome Policy</label>
                 <select class="form-control" id="probe-expected">
-                  <option value="DENY">DENY (Expect Access Prohibited)</option>
-                  <option value="ALLOW">ALLOW (Expect Access Permitted)</option>
+                  <option value="DENY">DENY (Expect Access Prohibited by Policy)</option>
+                  <option value="ALLOW">ALLOW (Expect Access Permitted by Policy)</option>
                 </select>
               </div>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem;">
+            <div class="form-group">
+              <label class="form-label">Target Resource Path (Strictly bounded to sandbox prefixes)</label>
+              <div style="display:flex; gap:0.5rem;">
+                <select class="form-control" id="probe-path" style="flex:1;">
+                  <option value="/data/red/red_secret.txt">/data/red/red_secret.txt (Owner: 1001, Mode: 0600 — Red Secret)</option>
+                  <option value="/data/blue/blue_secret.txt">/data/blue/blue_secret.txt (Owner: 1002, Mode: 0600 — Blue Secret)</option>
+                  <option value="/data/leaky/blue_leaked.txt">/data/leaky/blue_leaked.txt (Owner: 1002, Mode: 0644 — Negative Control)</option>
+                  <option value="/data/shared/dataset.csv">/data/shared/dataset.csv (Owner: 1000, Mode: 0640 — Shared Evaluator)</option>
+                  <option value="/data/red/missing_file.txt">/data/red/missing_file.txt (Missing Fixture — Tests ERROR classification)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Persistent Simulation Warning Banner -->
+            <div id="probe-sim-warning" class="simulation-warning-box" style="display:none;">
+              <span>⚠️</span>
+              <div><strong>EXPLICIT SIMULATION WARNING:</strong> This probe executes via application-level role emulation. Real Linux kernel OS DAC permissions will NOT be exercised.</div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem;">
               <div class="text-muted" style="font-size:0.8rem;">
-                Protected by strict path traversal validation. Relative jumps (<code>..</code>) and null-bytes are blocked.
+                Protected by strict containment validation. Path traversal sequences (<code>..</code>) and null-bytes are blocked.
               </div>
               <button type="submit" class="btn btn-primary" id="btn-submit-probe">
                 &#9889; Dispatch Probe
@@ -308,9 +401,46 @@
             </div>
           </form>
 
-          <div id="probe-result-container" style="margin-top:1.5rem; display:none;">
-            <div class="card-title" style="font-size:0.9rem; margin-bottom:0.5rem;">Probe Observation:</div>
-            <pre class="code-block" id="probe-result-output"></pre>
+          <!-- Structured Probe Observation & Diagnostic Card -->
+          <div id="probe-observation-card" class="probe-observation-card" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #222; padding-bottom:10px; margin-bottom:12px;">
+              <div style="font-weight:600; font-size:13px; color:#f0f0f0;">Probe Observation &amp; Enforcement Diagnostics</div>
+              <div id="probe-badges-row"></div>
+            </div>
+
+            <div id="probe-alert-banner"></div>
+
+            <div class="probe-obs-grid">
+              <div class="probe-obs-item">
+                <div class="probe-obs-label">OBSERVED CONTAINER UID</div>
+                <div class="probe-obs-value mono text-cyan" id="obs-uid">—</div>
+              </div>
+              <div class="probe-obs-item">
+                <div class="probe-obs-label">OBSERVED CONTAINER GID</div>
+                <div class="probe-obs-value mono text-cyan" id="obs-gid">—</div>
+              </div>
+              <div class="probe-obs-item">
+                <div class="probe-obs-label">ENFORCEMENT MECHANISM</div>
+                <div class="probe-obs-value" id="obs-mechanism" style="font-size:11px;">—</div>
+              </div>
+              <div class="probe-obs-item">
+                <div class="probe-obs-label">OS DAC ENFORCED?</div>
+                <div class="probe-obs-value" id="obs-os-enforced">—</div>
+              </div>
+              <div class="probe-obs-item">
+                <div class="probe-obs-label">ACTUAL OUTCOME</div>
+                <div class="probe-obs-value mono" id="obs-actual-outcome">—</div>
+              </div>
+              <div class="probe-obs-item">
+                <div class="probe-obs-label">POLICY RESULT</div>
+                <div class="probe-obs-value mono" id="obs-policy-result">—</div>
+              </div>
+            </div>
+
+            <div style="margin-top:12px;">
+              <div class="stat-label" style="margin-bottom:4px;">RAW WORKER RESPONSE / PROCESS OUTPUT:</div>
+              <pre class="code-block" id="probe-raw-output" style="max-height:160px;"></pre>
+            </div>
           </div>
         </div>
 

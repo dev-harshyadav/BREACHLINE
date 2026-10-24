@@ -11,6 +11,10 @@ let state = {
   labSchema: null,
 };
 
+let activeEventSource = null;
+let activePollingInterval = null;
+let isRefreshing = false;
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -149,6 +153,14 @@ function setupEventHandlers() {
   });
 
   // Boundary Probe Form
+  const probeMode = document.getElementById('probe-mode');
+  const simWarning = document.getElementById('probe-sim-warning');
+  if (probeMode && simWarning) {
+    probeMode.addEventListener('change', () => {
+      simWarning.style.display = probeMode.value === 'simulated' ? 'flex' : 'none';
+    });
+  }
+
   document.getElementById('form-boundary-probe').addEventListener('submit', async e => {
     e.preventDefault();
     await submitBoundaryProbe();
@@ -193,8 +205,17 @@ function setupEventHandlers() {
   document.getElementById('btn-execute-compare').addEventListener('click', executeRunComparison);
 }
 
-// Data Fetching & Core Refresh
+// Data Fetching & Core Refresh (Safe, Non-Destructive, Recovers Active Run)
 async function refreshAll() {
+  if (isRefreshing) return;
+  isRefreshing = true;
+
+  const btnRefresh = document.getElementById('btn-refresh-status');
+  if (btnRefresh) {
+    btnRefresh.disabled = true;
+    btnRefresh.innerHTML = `&#8635; Refreshing...`;
+  }
+
   try {
     const res = await fetch('/api/status');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -204,11 +225,25 @@ async function refreshAll() {
     updateHeaderAndSidebar(data);
     updateCumulativeKpis(data.metrics);
 
-    if (data.latest_run) {
+    // Active Run Recovery (Section 5 & 6)
+    if (data.active_run && data.active_run.status === 'RUNNING') {
+      updateTimeline(data.active_run);
+      connectRunStream(data.active_run.run_id);
+      state.latestRunId = data.active_run.run_id;
+    } else if (data.latest_run) {
       state.latestRunId = data.latest_run.run_id;
       await fetchRunDetails(state.latestRunId, false);
+      // Populate completed timeline for latest historical run
+      try {
+        const stateRes = await fetch(`/api/runs/${state.latestRunId}/status`);
+        if (stateRes.ok) {
+          const runState = await stateRes.json();
+          updateTimeline(runState);
+        }
+      } catch (_) {}
     } else {
       updateActiveRunKpis(null);
+      updateTimeline(null);
     }
 
     await fetchRunsHistory();
@@ -216,8 +251,22 @@ async function refreshAll() {
     await renderInspector();
   } catch (err) {
     console.error('Failed to load status:', err);
-    updateCumulativeKpis(null);
-    updateActiveRunKpis(null);
+    // Non-destructive notification: preserve last known data
+    const toast = document.createElement('div');
+    toast.className = 'simulation-warning-box';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '20px';
+    toast.style.right = '20px';
+    toast.style.zIndex = '9999';
+    toast.innerHTML = '⚠️ <strong>Backend Offline:</strong> Displaying cached historical metrics and state.';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  } finally {
+    isRefreshing = false;
+    if (btnRefresh) {
+      btnRefresh.disabled = false;
+      btnRefresh.innerHTML = `&#8635; Refresh`;
+    }
   }
 }
 
@@ -412,6 +461,205 @@ function renderScenariosTable(configList) {
   tbody.innerHTML = html;
 }
 
+// =========================================================================
+// Real-Time 6-Stage Execution Timeline & Live Streaming
+// =========================================================================
+
+function updateTimeline(runState) {
+  if (!runState) {
+    document.getElementById('timeline-run-id').textContent = 'No active run';
+    const badge = document.getElementById('timeline-run-badge');
+    if (badge) {
+      badge.className = 'timeline-badge status-idle';
+      badge.textContent = 'STATUS: IDLE';
+    }
+    document.getElementById('timeline-progress-tests').textContent = '0 / 0';
+    document.getElementById('timeline-current-test').textContent = '—';
+    document.getElementById('timeline-elapsed').textContent = '0.0s';
+    const indicator = document.getElementById('timeline-moving-indicator');
+    if (indicator) indicator.style.display = 'none';
+    const expl = document.getElementById('timeline-stage-explanation');
+    if (expl) expl.textContent = 'Pipeline idle. Select "Run Boundary Tests" to dispatch probes across configured tenant boundaries.';
+    const bar = document.getElementById('timeline-progress-bar');
+    if (bar) bar.style.width = '0%';
+
+    ['CONFIGURE', 'EXECUTE', 'OBSERVE', 'COMPARE', 'RECORD', 'VERIFY'].forEach(s => {
+      const node = document.getElementById(`stage-node-${s}`);
+      const st = document.getElementById(`stage-status-${s}`);
+      if (node) node.className = 'timeline-node pending';
+      if (st) st.textContent = 'Pending';
+    });
+    return;
+  }
+
+  // Update Run ID
+  const runId = runState.run_id || 'Unknown';
+  document.getElementById('timeline-run-id').textContent = runId.length > 20 ? runId.slice(0, 20) + '...' : runId;
+
+  // Update Status Badge
+  const badge = document.getElementById('timeline-run-badge');
+  const status = runState.status || 'IDLE';
+  if (badge) {
+    if (status === 'RUNNING') {
+      badge.className = 'timeline-badge status-running';
+      badge.textContent = 'STATUS: RUNNING';
+    } else if (status === 'COMPLETED') {
+      badge.className = 'timeline-badge status-completed';
+      badge.textContent = 'STATUS: COMPLETED (100% PASS)';
+    } else if (status === 'COMPLETED_WITH_FAILURES') {
+      badge.className = 'timeline-badge status-warn';
+      badge.textContent = 'STATUS: MISMATCH DETECTED';
+    } else if (status === 'FAILED') {
+      badge.className = 'timeline-badge status-failed';
+      badge.textContent = 'STATUS: FAILED';
+    } else if (status === 'QUEUED') {
+      badge.className = 'timeline-badge status-queued';
+      badge.textContent = 'STATUS: QUEUED';
+    } else {
+      badge.className = 'timeline-badge status-idle';
+      badge.textContent = `STATUS: ${status}`;
+    }
+  }
+
+  // Counts & Elapsed Time
+  const total = runState.total_tests || 4;
+  const completed = runState.completed_tests || 0;
+  document.getElementById('timeline-progress-tests').textContent = `${completed} / ${total}`;
+  document.getElementById('timeline-current-test').textContent = runState.current_test_id || (status === 'RUNNING' ? 'Initializing...' : '—');
+  document.getElementById('timeline-elapsed').textContent = `${(runState.elapsed_seconds || 0).toFixed(1)}s`;
+
+  // Moving Indicator (only active while work in progress)
+  const indicator = document.getElementById('timeline-moving-indicator');
+  const isWorking = status === 'RUNNING' || status === 'QUEUED';
+  if (indicator) {
+    indicator.style.display = isWorking ? 'inline-flex' : 'none';
+    const liveText = document.getElementById('timeline-live-text');
+    if (liveText) liveText.textContent = runState.current_stage || 'RUNNING';
+  }
+
+  // Stage explanation
+  const expl = document.getElementById('timeline-stage-explanation');
+  if (expl) {
+    expl.textContent = runState.stage_explanation || 'Evaluating configured sandbox security boundaries.';
+  }
+
+  // Update 6 Stage Nodes
+  const stageStates = runState.stage_states || {};
+  const stageOrder = ['CONFIGURE', 'EXECUTE', 'OBSERVE', 'COMPARE', 'RECORD', 'VERIFY'];
+  let lastCompletedIndex = -1;
+
+  stageOrder.forEach((stageName, idx) => {
+    const node = document.getElementById(`stage-node-${stageName}`);
+    const statusEl = document.getElementById(`stage-status-${stageName}`);
+    const stState = stageStates[stageName] || 'pending';
+
+    if (node) {
+      node.className = `timeline-node ${stState}`;
+    }
+    if (statusEl) {
+      if (stState === 'running') statusEl.textContent = 'Active...';
+      else if (stState === 'passed') {
+        statusEl.textContent = 'Completed';
+        lastCompletedIndex = idx;
+      } else if (stState === 'warn') {
+        statusEl.textContent = 'Warning';
+        lastCompletedIndex = idx;
+      } else if (stState === 'failed') {
+        statusEl.textContent = 'Failed';
+        lastCompletedIndex = idx;
+      } else {
+        statusEl.textContent = 'Pending';
+      }
+    }
+  });
+
+  // Connecting line progressive animation
+  let fillPercent = 0;
+  if (status === 'COMPLETED' || status === 'COMPLETED_WITH_FAILURES') {
+    fillPercent = 100;
+  } else if (lastCompletedIndex >= 0) {
+    fillPercent = Math.min(100, Math.round(((lastCompletedIndex + 1) / stageOrder.length) * 100));
+  } else if (status === 'RUNNING') {
+    fillPercent = 10;
+  }
+  const bar = document.getElementById('timeline-progress-bar');
+  if (bar) bar.style.width = `${fillPercent}%`;
+}
+
+function connectRunStream(runId) {
+  if (activeEventSource) {
+    activeEventSource.close();
+    activeEventSource = null;
+  }
+  if (activePollingInterval) {
+    clearInterval(activePollingInterval);
+    activePollingInterval = null;
+  }
+
+  if (typeof EventSource !== 'undefined') {
+    const es = new EventSource(`/api/runs/${runId}/stream`);
+    activeEventSource = es;
+
+    es.onmessage = async (event) => {
+      if (!event.data || event.data.trim() === '') return;
+      try {
+        const runState = JSON.parse(event.data);
+        updateTimeline(runState);
+
+        const finishedStatuses = ['COMPLETED', 'COMPLETED_WITH_FAILURES', 'FAILED', 'CANCELLED'];
+        if (finishedStatuses.includes(runState.status) || runState.current_stage === 'FINISHED') {
+          es.close();
+          activeEventSource = null;
+          await onRunFinished(runId);
+        }
+      } catch (e) {
+        console.error('SSE parse error:', e);
+      }
+    };
+
+    es.onerror = (err) => {
+      console.warn('SSE stream closed or disconnected, falling back to polling:', err);
+      es.close();
+      activeEventSource = null;
+      startPolling(runId);
+    };
+  } else {
+    startPolling(runId);
+  }
+}
+
+function startPolling(runId) {
+  if (activePollingInterval) clearInterval(activePollingInterval);
+
+  activePollingInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/runs/${runId}/status`);
+      if (!res.ok) {
+        clearInterval(activePollingInterval);
+        activePollingInterval = null;
+        return;
+      }
+      const runState = await res.json();
+      updateTimeline(runState);
+
+      const finishedStatuses = ['COMPLETED', 'COMPLETED_WITH_FAILURES', 'FAILED', 'CANCELLED'];
+      if (finishedStatuses.includes(runState.status) || runState.current_stage === 'FINISHED') {
+        clearInterval(activePollingInterval);
+        activePollingInterval = null;
+        await onRunFinished(runId);
+      }
+    } catch (e) {
+      console.error('Polling error:', e);
+    }
+  }, 450);
+}
+
+async function onRunFinished(runId) {
+  state.latestRunId = runId;
+  await refreshAll();
+  await fetchRunDetails(runId, false);
+}
+
 // Run Boundary Tests Trigger
 async function triggerRun(mode = 'auto') {
   const btn = document.getElementById('btn-run-suite');
@@ -422,25 +670,31 @@ async function triggerRun(mode = 'auto') {
     const res = await fetch('/api/runs/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: mode }),
+      body: JSON.stringify({ mode: mode, async_run: true }),
     });
 
     if (!res.ok) {
       const err = await res.json();
       alert(`Test run failed: ${err.detail || 'Unknown error'}`);
+      btn.disabled = false;
+      btn.innerHTML = `&#9654; Run Boundary Tests`;
       return;
     }
 
     const data = await res.json();
     state.latestRunId = data.run_id;
-    await refreshAll();
+
+    // Connect to live SSE stream for real-time timeline animation
+    connectRunStream(data.run_id);
     navigateTo('overview');
   } catch (err) {
     console.error('Run failed:', err);
     alert(`Execution error: ${err.message}`);
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = `&#9654; Run Boundary Tests`;
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = `&#9654; Run Boundary Tests`;
+    }, 1500);
   }
 }
 
@@ -473,8 +727,10 @@ async function fetchBoundaryLabSchema() {
   }
 }
 
+// Interactive Boundary Probe Dispatch & Diagnostic Rendering
 async function submitBoundaryProbe() {
   const role = document.getElementById('probe-worker').value;
+  const mode = document.getElementById('probe-mode')?.value || 'docker';
   const operation = document.getElementById('probe-operation').value;
   const path = document.getElementById('probe-path').value;
   const expected = document.getElementById('probe-expected').value;
@@ -489,6 +745,7 @@ async function submitBoundaryProbe() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         role: role,
+        mode: mode,
         operation: operation,
         target_path: path,
         expected_outcome: expected,
@@ -497,13 +754,74 @@ async function submitBoundaryProbe() {
     });
 
     const data = await res.json();
-    const container = document.getElementById('probe-result-container');
-    const out = document.getElementById('probe-result-output');
-    container.style.display = 'block';
+    const card = document.getElementById('probe-observation-card');
+    card.style.display = 'block';
 
-    out.textContent = JSON.stringify(data, null, 2);
+    // Populate observation metrics
+    const obsUid = data.observed_uid !== null && data.observed_uid !== undefined ? data.observed_uid : 'N/A';
+    const obsGid = data.observed_gid !== null && data.observed_gid !== undefined ? data.observed_gid : 'N/A';
+    document.getElementById('obs-uid').textContent = obsUid;
+    document.getElementById('obs-gid').textContent = obsGid;
+    document.getElementById('obs-mechanism').textContent = data.enforcement_mechanism || 'Unknown';
+    
+    document.getElementById('obs-os-enforced').innerHTML = data.is_os_enforced
+      ? '<span class="text-green font-bold">YES (POSIX DAC)</span>'
+      : '<span class="text-amber font-bold">NO (Simulated)</span>';
+
+    // Actual Outcome badge
+    const act = data.actual_outcome || 'ERROR';
+    let actBadgeClass = 'badge-pass';
+    if (act === 'DENY') actBadgeClass = 'badge-info';
+    else if (act === 'ERROR' || act === 'TIMEOUT' || act === 'UNAVAILABLE') actBadgeClass = 'badge-fail';
+    document.getElementById('obs-actual-outcome').innerHTML = `<span class="badge ${actBadgeClass}">${act}</span>`;
+
+    // Policy Result badge
+    const pol = data.policy_result || 'FAIL';
+    const polBadgeClass = pol === 'PASS' ? 'badge-pass' : 'badge-fail';
+    document.getElementById('obs-policy-result').innerHTML = `<span class="badge ${polBadgeClass}">${pol}</span>`;
+
+    // Header Badges
+    document.getElementById('probe-badges-row').innerHTML = `
+      <span class="badge badge-info">Mode: ${escapeHtml(data.effective_mode || mode)}</span>
+      <span class="badge ${polBadgeClass}">Policy: ${pol}</span>
+      <span class="badge ${data.is_os_enforced ? 'badge-pass' : 'badge-warn'}">${data.is_os_enforced ? 'OS Enforced' : 'Simulated'}</span>
+    `;
+
+    // Alert Banner
+    const alertBanner = document.getElementById('probe-alert-banner');
+    if (data.is_unexpected_access) {
+      alertBanner.innerHTML = `
+        <div class="unexpected-access-box">
+          <span>🚨</span>
+          <div><strong>BOUNDARY VIOLATION CONFIRMED:</strong> Operation succeeded (exit code 0) despite policy expecting DENY! Active test harness caught misconfiguration.</div>
+        </div>
+      `;
+    } else if (data.simulation_warning) {
+      alertBanner.innerHTML = `
+        <div class="simulation-warning-box">
+          <span>⚠️</span>
+          <div>${escapeHtml(data.simulation_warning)}</div>
+        </div>
+      `;
+    } else if (data.actual_outcome === 'ERROR' || data.actual_outcome === 'UNAVAILABLE') {
+      alertBanner.innerHTML = `
+        <div class="simulation-warning-box" style="background:rgba(239,68,68,0.1); border-color:#ef4444; color:#fca5a5;">
+          <span>❌</span>
+          <div><strong>EXECUTION ERROR:</strong> ${escapeHtml(data.error_detail || 'Operation failed with execution error.')} (Correctly classified as ERROR, not a permission denial)</div>
+        </div>
+      `;
+    } else {
+      alertBanner.innerHTML = '';
+    }
+
+    // Raw Output / Process details
+    const exec = data.execution || {};
+    const rawText = exec.output
+      ? `[EXIT CODE ${exec.exit_code}] Output:\n${exec.output}`
+      : `[EXIT CODE ${exec.exit_code}] Error:\n${exec.error || '(None)'}`;
+    document.getElementById('probe-raw-output').textContent = rawText;
   } catch (err) {
-    alert(`Probe error: ${err.message}`);
+    alert(`Probe dispatch failed: ${err.message}`);
   } finally {
     btn.disabled = false;
     btn.textContent = '⚡ Dispatch Probe';
