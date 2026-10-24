@@ -12,7 +12,15 @@ from typing import Any, Dict, List, Optional
 from src.models import GENESIS_HASH
 from src.verifier import EvidenceVerifier
 
-OUTPUT_DIR = Path(os.environ.get("BREACHLINE_OUTPUT_DIR", "output"))
+# Use writable temporary storage on Vercel; preserve local storage elsewhere.
+if os.environ.get("VERCEL") == "1":
+    DEFAULT_OUTPUT_DIR = "/tmp/breachline/output"
+else:
+    DEFAULT_OUTPUT_DIR = "output"
+
+OUTPUT_DIR = Path(
+    os.environ.get("BREACHLINE_OUTPUT_DIR", DEFAULT_OUTPUT_DIR)
+)
 RUNS_DIR = OUTPUT_DIR / "runs"
 INDEX_FILE = RUNS_DIR / "index.json"
 ANCHORS_DIR = OUTPUT_DIR / "trust_anchors"
