@@ -16,6 +16,7 @@ CRITICAL RULES:
 6. Execution errors must NEVER be classified as successful policy denials (cannot produce PASS).
 7. Negative controls: When expected is DENY and observed is ALLOW, policy_result is FAIL and flagged as unexpected access.
 """
+from typing import Any, Dict, Optional, Tuple 
 
 class OutcomeClassification:
     ALLOW = "ALLOW"
