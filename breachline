@@ -1,3 +1,6 @@
 #!/usr/bin/env bash
 # BREACHLINE CLI Executable Wrapper
-PYTHONPATH="." python3 -m src.cli "$@"
+# Resolves project root directory dynamically so commands work from any CWD.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}" || exit 1
+PYTHONPATH="${SCRIPT_DIR}" exec python3 -m src.cli "$@"

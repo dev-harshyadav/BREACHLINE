@@ -27,6 +27,7 @@ from src.boundary_lab import (
     get_boundary_lab_schema,
     validate_boundary_scenario,
 )
+from src.classification import classify_execution_outcome
 from src.local_sandbox import execute_local_operation, setup_local_sandbox
 from src.models import GENESIS_HASH, HASHED_FIELDS, SCHEMA_VERSION, TestCase
 from src.report import DEFAULT_REPORT_HTML_PATH, DEFAULT_REPORT_JSON_PATH, generate_report
@@ -49,13 +50,19 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for local development
+# Hardened CORS: explicit configurable origin allowlist (eliminating wildcard with credentials)
+_cors_env = os.environ.get(
+    "BREACHLINE_CORS_ORIGINS",
+    "http://localhost:8000,http://127.0.0.1:8000,http://localhost:8008,http://127.0.0.1:8008,http://localhost:8009,http://127.0.0.1:8009"
+)
+CORS_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 STATIC_DIR = Path("src/static")
@@ -81,7 +88,9 @@ class CompareRequest(BaseModel):
 
 
 class TamperRequest(BaseModel):
-    attack_id: str = Field(default="ALL", description="'ATTACK_1' to 'ATTACK_5' or 'ALL'")
+    run_id: Optional[str] = None
+    attack_id: str = Field(default="ALL", description="'ATTACK_1' to 'ATTACK_6' or 'ALL'")
+
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +159,13 @@ def get_run_details(run_id: str) -> Dict[str, Any]:
 @app.post("/api/runs/execute")
 def trigger_test_run(req: ExecuteRunRequest = Body(...)) -> Dict[str, Any]:
     """Execute a boundary test run and persist evidence."""
+    valid_modes = {"auto", "docker", "local_sandbox", "simulated", "local_os", "demo"}
+    if req.mode not in valid_modes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid execution mode '{req.mode}'. Must be one of: {sorted(valid_modes)}"
+        )
+
     config_file = "config/test_cases.json"
     temp_config = None
 
@@ -360,7 +376,10 @@ def get_recent_findings() -> Dict[str, Any]:
 @app.post("/api/tamper/execute")
 def execute_tamper_demo(req: TamperRequest = Body(...)) -> Dict[str, Any]:
     """Run disposable evidence-tampering simulations without touching original files."""
-    lab = EvidenceTamperLab()
+    if req.run_id and not is_safe_run_id(req.run_id):
+        raise HTTPException(status_code=400, detail="Invalid run_id format.")
+
+    lab = EvidenceTamperLab(run_id=req.run_id) if req.run_id else EvidenceTamperLab()
 
     attack_map = {
         "ATTACK_1": lab.attack_1_field_modification,
@@ -368,6 +387,7 @@ def execute_tamper_demo(req: TamperRequest = Body(...)) -> Dict[str, Any]:
         "ATTACK_3": lab.attack_3_record_reordering,
         "ATTACK_4": lab.attack_4_broken_hash_link,
         "ATTACK_5": lab.attack_5_full_chain_rewrite,
+        "ATTACK_6": lab.attack_6_tail_truncation,
     }
 
     if req.attack_id == "ALL":
@@ -375,7 +395,7 @@ def execute_tamper_demo(req: TamperRequest = Body(...)) -> Dict[str, Any]:
     elif req.attack_id in attack_map:
         results = [asdict(attack_map[req.attack_id]())]
     else:
-        raise HTTPException(status_code=400, detail=f"Unknown attack_id '{req.attack_id}'.")
+        raise HTTPException(status_code=400, detail=f"Unknown attack_id '{req.attack_id}'. Must be 'ALL' or one of: {list(attack_map.keys())}")
 
     return {
         "success": True,
@@ -411,15 +431,14 @@ def execute_boundary_probe(probe: ProbeRequest = Body(...)) -> Dict[str, Any]:
 
     # 2. Execute against local sandbox
     res = execute_local_operation(probe.role, probe.operation, probe.target_path)
-    exit_code = res.get("exit_code", 1)
-    actual_outcome = "ALLOW" if exit_code == 0 else "DENY"
-    policy_result = "PASS" if actual_outcome == probe.expected_outcome else "FAIL"
+    actual_outcome, policy_result, error_detail = classify_execution_outcome(res, probe.expected_outcome)
 
     return {
         "probe": scenario_dict,
         "execution": res,
         "actual_outcome": actual_outcome,
         "policy_result": policy_result,
+        "error_detail": error_detail,
         "is_unexpected_access": (probe.expected_outcome == "DENY" and actual_outcome == "ALLOW"),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }

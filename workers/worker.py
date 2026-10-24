@@ -18,6 +18,20 @@ def execute_operation(operation: str, target_path: str) -> Dict[str, Any]:
     current_uid = os.getuid()
     current_gid = os.getgid()
 
+    parent_dir = os.path.dirname(target_path)
+    if parent_dir and not os.path.exists(parent_dir):
+        return {
+            "success": False,
+            "exit_code": 125,
+            "output": "",
+            "error": f"Fixture directory not found: {parent_dir}",
+            "uid": current_uid,
+            "gid": current_gid,
+            "is_os_enforced": True,
+            "is_execution_error": True,
+            "enforcement_mechanism": "Linux Kernel POSIX DAC",
+        }
+
     if operation == "file:read":
         try:
             with open(target_path, "r", encoding="utf-8") as f:
@@ -30,6 +44,7 @@ def execute_operation(operation: str, target_path: str) -> Dict[str, Any]:
                 "uid": current_uid,
                 "gid": current_gid,
                 "is_os_enforced": True,
+                "is_execution_error": False,
                 "enforcement_mechanism": "Linux Kernel POSIX DAC",
             }
         except PermissionError as e:
@@ -41,6 +56,8 @@ def execute_operation(operation: str, target_path: str) -> Dict[str, Any]:
                 "uid": current_uid,
                 "gid": current_gid,
                 "is_os_enforced": True,
+                "is_denied": True,
+                "is_execution_error": False,
                 "enforcement_mechanism": "Linux Kernel POSIX DAC",
             }
         except FileNotFoundError as e:
@@ -52,17 +69,19 @@ def execute_operation(operation: str, target_path: str) -> Dict[str, Any]:
                 "uid": current_uid,
                 "gid": current_gid,
                 "is_os_enforced": True,
+                "is_execution_error": True,
                 "enforcement_mechanism": "Linux Kernel POSIX DAC",
             }
         except Exception as e:
             return {
                 "success": False,
-                "exit_code": 1,
+                "exit_code": 125,
                 "output": "",
                 "error": f"OS Error: {e}",
                 "uid": current_uid,
                 "gid": current_gid,
                 "is_os_enforced": True,
+                "is_execution_error": True,
                 "enforcement_mechanism": "Linux Kernel POSIX DAC",
             }
     else:

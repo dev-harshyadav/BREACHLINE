@@ -27,7 +27,15 @@ def cmd_run(args):
     summary = runner.run_all(verify_workers=False)
     # Generate reports
     generate_report(evidence_path=str(runner.evidence_path))
-    sys.exit(0 if summary["failed"] == 1 and any(r.get("expected_outcome") == "DENY" and r.get("actual_outcome") == "ALLOW" for r in summary["records"]) else (0 if summary["failed"] == 0 else 1))
+    if summary["execution_errors_count"] > 0:
+        print(f"\n[BREACHLINE ERROR] {summary['execution_errors_count']} infrastructure/execution error(s) occurred.")
+        sys.exit(2)
+    elif summary["failed"] > 0:
+        print(f"\n[BREACHLINE POLICY FAIL] {summary['failed']} policy mismatch(es) observed.")
+        sys.exit(1)
+    else:
+        print(f"\n[BREACHLINE SUCCESS] All {summary['passed']} configured access boundaries verified.")
+        sys.exit(0)
 
 
 def cmd_demo(args):
@@ -60,23 +68,53 @@ def cmd_demo(args):
 
 
 def cmd_verify(args):
-    """Verify an evidence log file."""
+    """Verify an evidence log and optionally validate its trust anchor."""
     evidence_path = args.evidence or "output/evidence.jsonl"
+    anchor_path = getattr(args, "anchor", None)
+    require_anchor = getattr(args, "require_anchor", False)
+
     print(f"[BREACHLINE VERIFIER] Inspecting evidence file: {evidence_path}")
-    result = EvidenceVerifier.verify_file(evidence_path)
+
+    result = EvidenceVerifier.verify_file(
+        evidence_path,
+        anchor_path=anchor_path,
+        require_anchor=require_anchor,
+    )
 
     if result.is_valid:
-        print(f"\033[92m[PASS] Cryptographic chain verified ({result.total_records} records).\033[0m")
+        print(
+            f"\033[92m[PASS] Cryptographic chain verified "
+            f"({result.total_records} records).\033[0m"
+        )
         print("  - All canonical payloads match their SHA-256 record hashes.")
         print("  - Sequence ordering and genesis links intact.")
+
+        if result.anchor_status:
+            print(
+                f"[BREACHLINE VERIFIER] Trust anchor verified: "
+                f"{result.anchor_status}"
+            )
+        elif require_anchor:
+            print(
+                "[BREACHLINE VERIFIER] [FAIL] Required trust anchor "
+                "was not verified.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
         sys.exit(0)
-    else:
-        print(f"\033[91m[FAIL] Verification error detected at record {result.first_error_index}!\033[0m")
-        print(f"  Error Type: {result.error_type}")
-        print(f"  Reason:     {result.error_message}")
-        if result.details:
-            print(f"  Details:    {result.details}")
-        sys.exit(1)
+
+    print(
+        f"\033[91m[FAIL] Verification failed at record "
+        f"{result.first_error_index}!\033[0m"
+    )
+    print(f"  Error Type: {result.error_type}")
+    print(f"  Reason:     {result.error_message}")
+    if result.details:
+        print(f"  Details:    {result.details}")
+    if result.anchor_status:
+        print(f"  Trust Anchor: {result.anchor_status}")
+    sys.exit(1)
 
 
 def cmd_tamper(args):
@@ -97,15 +135,17 @@ def cmd_tamper(args):
             "3": lab.attack_3_record_reordering,
             "4": lab.attack_4_broken_hash_link,
             "5": lab.attack_5_full_chain_rewrite,
+            "6": lab.attack_6_tail_truncation,
             "ATTACK_1": lab.attack_1_field_modification,
             "ATTACK_2": lab.attack_2_record_deletion,
             "ATTACK_3": lab.attack_3_record_reordering,
             "ATTACK_4": lab.attack_4_broken_hash_link,
             "ATTACK_5": lab.attack_5_full_chain_rewrite,
+            "ATTACK_6": lab.attack_6_tail_truncation,
         }
         fn = attack_map.get(attack)
         if not fn:
-            print(f"[ERROR] Unknown attack '{attack}'. Choose 1, 2, 3, 4, 5, or ALL.")
+            print(f"[ERROR] Unknown attack '{attack}'. Choose 1, 2, 3, 4, 5, 6, or ALL.")
             sys.exit(1)
         results = [fn()]
 
@@ -226,8 +266,14 @@ def main():
     subparsers.add_parser("demo", help="Run 90-second automated demo")
 
     # verify
-    p_verify = subparsers.add_parser("verify", help="Independently verify evidence file")
+    p_verify = subparsers.add_parser("verify", help="Independently verify evidence file and optional trust anchor")
     p_verify.add_argument("evidence", nargs="?", default="output/evidence.jsonl", help="Path to evidence.jsonl")
+    p_verify.add_argument("--anchor", help="Path to the trust-anchor JSON file")
+    p_verify.add_argument(
+        "--require-anchor",
+        action="store_true",
+        help="Fail verification if the trust anchor is missing or invalid",
+    )
 
     # tamper
     p_tamper = subparsers.add_parser("tamper", help="Run tampering lab experiments")

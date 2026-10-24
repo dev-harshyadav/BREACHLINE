@@ -103,6 +103,19 @@ def execute_local_os_operation(operation: str, target_path: str) -> Dict[str, An
             "enforcement_mechanism": "Path Traversal Barrier",
         }
 
+    if not real_file.parent.exists():
+        return {
+            "success": False,
+            "exit_code": 125,
+            "output": "",
+            "error": f"Fixture directory not found: {real_file.parent}",
+            "uid": current_uid,
+            "gid": current_gid,
+            "is_os_enforced": True,
+            "is_execution_error": True,
+            "enforcement_mechanism": "Host OS Kernel VFS",
+        }
+
     if operation == "file:read":
         # REAL OS KERNEL DAC TEST: Attempt to open the file directly
         try:
@@ -129,6 +142,7 @@ def execute_local_os_operation(operation: str, target_path: str) -> Dict[str, An
                 "uid": current_uid,
                 "gid": current_gid,
                 "is_os_enforced": True,
+                "is_denied": True,
                 "is_execution_error": False,
                 "enforcement_mechanism": "Host OS Kernel POSIX DAC",
             }
@@ -141,7 +155,7 @@ def execute_local_os_operation(operation: str, target_path: str) -> Dict[str, An
                 "uid": current_uid,
                 "gid": current_gid,
                 "is_os_enforced": True,
-                "is_execution_error": False,
+                "is_execution_error": True,
                 "enforcement_mechanism": "Host OS Kernel VFS",
             }
         except Exception as e:
@@ -259,11 +273,12 @@ def execute_simulated_role_operation(role: str, operation: str, target_path: str
                 "error": "Permission denied (Simulated DAC): Red worker prohibited from Blue secret.",
                 "worker": role,
                 "is_os_enforced": False,
+                "is_denied": True,
                 "is_execution_error": False,
                 "enforcement_mechanism": "SIMULATED_ROLE_BASED",
                 "simulation_notice": "Application-level simulation. NOT OS ENFORCED.",
             }
-        elif "/red/red_secret.txt" in target_path or "/leaky/blue_leaked.txt" in target_path:
+        elif "/red/red_secret.txt" in target_path or "/leaky/blue_leaked.txt" in target_path or "/shared/dataset.csv" in target_path:
             return {
                 "success": True,
                 "exit_code": 0,
@@ -285,11 +300,12 @@ def execute_simulated_role_operation(role: str, operation: str, target_path: str
                 "error": "Permission denied (Simulated DAC): Blue worker prohibited from Red secret.",
                 "worker": role,
                 "is_os_enforced": False,
+                "is_denied": True,
                 "is_execution_error": False,
                 "enforcement_mechanism": "SIMULATED_ROLE_BASED",
                 "simulation_notice": "Application-level simulation. NOT OS ENFORCED.",
             }
-        elif "/blue/blue_secret.txt" in target_path or "/leaky/blue_leaked.txt" in target_path:
+        elif "/blue/blue_secret.txt" in target_path or "/leaky/blue_leaked.txt" in target_path or "/shared/dataset.csv" in target_path:
             return {
                 "success": True,
                 "exit_code": 0,
@@ -304,12 +320,12 @@ def execute_simulated_role_operation(role: str, operation: str, target_path: str
 
     return {
         "success": False,
-        "exit_code": 1,
+        "exit_code": 2,
         "output": "",
-        "error": "Access Denied (Simulated)",
+        "error": f"File not found (Simulated): {target_path}",
         "worker": role,
         "is_os_enforced": False,
-        "is_execution_error": False,
+        "is_execution_error": True,
         "enforcement_mechanism": "SIMULATED_ROLE_BASED",
         "simulation_notice": "Application-level simulation. NOT OS ENFORCED.",
     }

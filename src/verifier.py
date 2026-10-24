@@ -65,6 +65,7 @@ class EvidenceVerifier:
         file_path: str,
         anchor_data: Optional[Dict[str, Any]] = None,
         anchor_path: Optional[str] = None,
+        require_anchor: bool = False,
     ) -> VerificationResult:
         path = Path(file_path)
         if not path.exists():
@@ -198,14 +199,102 @@ class EvidenceVerifier:
 
         # 7. Check against independent trust anchor if provided
         target_anchor = anchor_data
-        if not target_anchor and anchor_path and Path(anchor_path).exists():
-            try:
-                with open(anchor_path, "r", encoding="utf-8") as f:
-                    target_anchor = json.load(f)
-            except Exception:
-                target_anchor = None
 
+        # If anchor_path is provided, resolve it
+        if not target_anchor and anchor_path:
+            p_anchor = Path(anchor_path)
+            if not p_anchor.exists():
+                return VerificationResult(
+                    is_valid=False,
+                    total_records=len(records),
+                    first_error_index=len(records),
+                    error_type="MISSING_ANCHOR",
+                    error_message=f"Specified trust anchor file not found: {anchor_path}",
+                    anchor_verified=False,
+                    anchor_status="ANCHOR_MISSING",
+                )
+            try:
+                with open(p_anchor, "r", encoding="utf-8") as f:
+                    target_anchor = json.load(f)
+            except Exception as e:
+                return VerificationResult(
+                    is_valid=False,
+                    total_records=len(records),
+                    first_error_index=len(records),
+                    error_type="ANCHOR_READ_ERROR",
+                    error_message=f"Failed to read trust anchor file at {anchor_path}: {e}",
+                    anchor_verified=False,
+                    anchor_status="ANCHOR_READ_ERROR",
+                )
+
+        # If anchor is required but missing entirely
+        if require_anchor and not target_anchor:
+            return VerificationResult(
+                is_valid=False,
+                total_records=len(records),
+                first_error_index=len(records),
+                error_type="ANCHOR_MISSING",
+                error_message="Verification requires an independent trust anchor commitment, but none was provided.",
+                anchor_verified=False,
+                anchor_status="ANCHOR_MISSING",
+            )
+
+        # If an anchor is present, validate it fail-closed
         if target_anchor:
+            if isinstance(target_anchor, dict) and target_anchor.get("anchor_persistence_failed"):
+                return VerificationResult(
+                    is_valid=False,
+                    total_records=len(records),
+                    first_error_index=len(records),
+                    error_type="ANCHOR_PERSISTENCE_FAILED",
+                    error_message=f"Trust anchor persistence failed: {target_anchor.get('error', 'unknown error')}",
+                    anchor_verified=False,
+                    anchor_status="ANCHOR_PERSISTENCE_FAILED",
+                )
+
+            if isinstance(target_anchor, dict) and target_anchor.get("read_error"):
+                return VerificationResult(
+                    is_valid=False,
+                    total_records=len(records),
+                    first_error_index=len(records),
+                    error_type="ANCHOR_READ_ERROR",
+                    error_message=f"Trust anchor cannot be read: {target_anchor.get('error', 'unknown error')}",
+                    anchor_verified=False,
+                    anchor_status="ANCHOR_READ_ERROR",
+                )
+
+            if not isinstance(target_anchor, dict) or "tip_record_hash" not in target_anchor:
+                return VerificationResult(
+                    is_valid=False,
+                    total_records=len(records),
+                    first_error_index=len(records),
+                    error_type="ANCHOR_MALFORMED",
+                    error_message="Trust anchor commitment is malformed: missing required 'tip_record_hash' field.",
+                    anchor_verified=False,
+                    anchor_status="ANCHOR_MALFORMED",
+                )
+
+            # Check record count (prevents tail truncation)
+            expected_count = target_anchor.get("total_records")
+            if expected_count is not None and len(records) != expected_count:
+                return VerificationResult(
+                    is_valid=False,
+                    total_records=len(records),
+                    first_error_index=len(records),
+                    error_type="ANCHOR_RECORD_COUNT_MISMATCH",
+                    error_message=(
+                        f"Trust anchor record count {expected_count} does not match evidence count {len(records)} "
+                        f"(indicates tail truncation or extra records appended)."
+                    ),
+                    details={
+                        "expected_total_records": expected_count,
+                        "found_total_records": len(records),
+                    },
+                    anchor_verified=False,
+                    anchor_status="ANCHOR_RECORD_COUNT_MISMATCH",
+                )
+
+            # Check tip record hash
             expected_tip = target_anchor.get("tip_record_hash")
             actual_tip = records[-1].get("record_hash") if records else ""
             if expected_tip and actual_tip != expected_tip:
@@ -227,6 +316,7 @@ class EvidenceVerifier:
                     anchor_status="ANCHOR_MISMATCH",
                 )
 
+            # Check full-file SHA-256 digest if present
             expected_file_hash = target_anchor.get("evidence_sha256")
             if expected_file_hash:
                 actual_file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -236,7 +326,7 @@ class EvidenceVerifier:
                         total_records=len(records),
                         first_error_index=len(records),
                         error_type="TRUST_ANCHOR_FILE_HASH_MISMATCH",
-                        error_message="Evidence file SHA-256 does not match independently anchored file digest.",
+                        error_message="Evidence file SHA-256 digest does not match independently anchored file digest.",
                         details={
                             "expected_evidence_sha256": expected_file_hash,
                             "found_evidence_sha256": actual_file_hash,
@@ -244,6 +334,18 @@ class EvidenceVerifier:
                         anchor_verified=False,
                         anchor_status="ANCHOR_FILE_HASH_MISMATCH",
                     )
+
+            # Check if anchor record indicates persistence failure
+            if target_anchor.get("trust_anchor_status") == "PERSISTENCE_FAILED":
+                return VerificationResult(
+                    is_valid=False,
+                    total_records=len(records),
+                    first_error_index=len(records),
+                    error_type="ANCHOR_PERSISTENCE_FAILED",
+                    error_message="Trust anchor persistence previously failed.",
+                    anchor_verified=False,
+                    anchor_status="ANCHOR_PERSISTENCE_FAILED",
+                )
 
             return VerificationResult(
                 is_valid=True,
@@ -254,6 +356,7 @@ class EvidenceVerifier:
                 anchor_status="ANCHOR_VERIFIED_MATCH",
             )
 
+        # Unanchored historical run
         return VerificationResult(
             is_valid=True,
             total_records=len(records),
@@ -266,24 +369,42 @@ class EvidenceVerifier:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 -m src.verifier <path_to_evidence.jsonl>")
+        print("Usage: python3 -m src.verifier <path_to_evidence.jsonl> [--anchor <anchor.json>] [--require-anchor]")
         sys.exit(2)
 
     file_path = sys.argv[1]
+    anchor_path = None
+    require_anchor = False
+
+    args = sys.argv[2:]
+    idx = 0
+    while idx < len(args):
+        if args[idx] == "--anchor" and idx + 1 < len(args):
+            anchor_path = args[idx + 1]
+            idx += 2
+        elif args[idx] == "--require-anchor":
+            require_anchor = True
+            idx += 1
+        else:
+            idx += 1
+
     print(f"[BREACHLINE VERIFIER] Inspecting evidence file: {file_path}")
-    result = EvidenceVerifier.verify_file(file_path)
+    result = EvidenceVerifier.verify_file(file_path, anchor_path=anchor_path, require_anchor=require_anchor)
 
     if result.is_valid:
         print(f"[BREACHLINE VERIFIER] PASS: Cryptographic chain verified ({result.total_records} records).")
         print("[BREACHLINE VERIFIER] All record hashes match their canonical payloads.")
         print("[BREACHLINE VERIFIER] Sequence ordering and genesis links intact.")
+        if result.anchor_verified:
+            print(f"[BREACHLINE VERIFIER] Trust anchor verified: {result.anchor_status}")
         sys.exit(0)
     else:
         print(f"[BREACHLINE VERIFIER] FAIL: Verification failed at record {result.first_error_index}!")
-        print(f"  Error Type: {result.error_type}")
-        print(f"  Reason:     {result.error_message}")
+        print(f"  Error Type:    {result.error_type}")
+        print(f"  Anchor Status: {result.anchor_status}")
+        print(f"  Reason:        {result.error_message}")
         if result.details:
-            print(f"  Details:    {result.details}")
+            print(f"  Details:       {result.details}")
         sys.exit(1)
 
 

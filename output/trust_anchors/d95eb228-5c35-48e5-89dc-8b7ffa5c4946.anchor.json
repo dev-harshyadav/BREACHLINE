@@ -1,0 +1,10 @@
+{
+  "run_id": "d95eb228-5c35-48e5-89dc-8b7ffa5c4946",
+  "anchored_at_utc": "2026-10-23T22:06:22.691988+00:00",
+  "total_records": 4,
+  "tip_record_hash": "6656d42082f65c19a165eb08604bf10749a413ce101d9461cbdef7a5f10f42a1",
+  "evidence_sha256": "c4e3648bdd5320e7483e4a958d25d1609acedf081ce201a24186cf5e1986f33a",
+  "policy_result": "FAIL",
+  "anchor_type": "LOCAL_COMMITMENT_STORE",
+  "description": "Independently stored cryptographic run commitment to detect full-chain rewrites"
+}

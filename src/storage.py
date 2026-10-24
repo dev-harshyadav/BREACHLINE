@@ -12,10 +12,24 @@ from typing import Any, Dict, List, Optional
 from src.models import GENESIS_HASH
 from src.verifier import EvidenceVerifier
 
-OUTPUT_DIR = Path("output")
+OUTPUT_DIR = Path(os.environ.get("BREACHLINE_OUTPUT_DIR", "output"))
 RUNS_DIR = OUTPUT_DIR / "runs"
 INDEX_FILE = RUNS_DIR / "index.json"
 ANCHORS_DIR = OUTPUT_DIR / "trust_anchors"
+
+
+class CorruptIndexError(RuntimeError):
+    """Raised when the runs index file contains invalid or unparseable JSON."""
+    pass
+
+
+def set_storage_dir(new_output_dir: Path) -> None:
+    """Dynamically configure storage root path and derived directories."""
+    global OUTPUT_DIR, RUNS_DIR, INDEX_FILE, ANCHORS_DIR
+    OUTPUT_DIR = Path(new_output_dir)
+    RUNS_DIR = OUTPUT_DIR / "runs"
+    INDEX_FILE = RUNS_DIR / "index.json"
+    ANCHORS_DIR = OUTPUT_DIR / "trust_anchors"
 
 
 def is_safe_run_id(run_id: str) -> bool:
@@ -33,23 +47,79 @@ def ensure_storage_dirs() -> None:
 
 
 def load_runs_index() -> List[Dict[str, Any]]:
-    """Load the metadata index of all previous runs."""
+    """Load the metadata index of all previous runs.
+    
+    Fails closed: if index.json exists but is corrupt or invalid JSON,
+    raises CorruptIndexError rather than silently returning an empty list
+    which would cause subsequent writes to wipe out historical runs.
+    """
     ensure_storage_dirs()
     if not INDEX_FILE.exists():
         return []
     try:
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
+            if not isinstance(data, dict) or "runs" not in data:
+                raise CorruptIndexError(f"Malformed runs index at {INDEX_FILE}: missing 'runs' root key")
             return data.get("runs", [])
-    except Exception:
-        return []
+    except json.JSONDecodeError as e:
+        raise CorruptIndexError(f"Corrupt JSON in runs index file at {INDEX_FILE}: {e}") from e
+    except Exception as e:
+        if isinstance(e, CorruptIndexError):
+            raise
+        raise RuntimeError(f"Failed to read runs index file at {INDEX_FILE}: {e}") from e
 
 
 def save_runs_index(runs: List[Dict[str, Any]]) -> None:
-    """Save the runs index file."""
+    """Save the runs index file using process-level locking and atomic replacement."""
     ensure_storage_dirs()
-    with open(INDEX_FILE, "w", encoding="utf-8") as f:
-        json.dump({"runs": runs, "updated_at": datetime.now(timezone.utc).isoformat()}, f, indent=2)
+    lock_file = RUNS_DIR / ".index.lock"
+    
+    import fcntl
+    import tempfile
+    with open(lock_file, "w") as lock_f:
+        try:
+            fcntl.flock(lock_f, fcntl.LOCK_EX)
+            with tempfile.NamedTemporaryFile("w", dir=str(RUNS_DIR), delete=False, encoding="utf-8") as tmp_f:
+                tmp_path = Path(tmp_f.name)
+                json.dump({"runs": runs, "updated_at": datetime.now(timezone.utc).isoformat()}, tmp_f, indent=2)
+            os.replace(tmp_path, INDEX_FILE)
+        finally:
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
+
+
+def update_runs_index(meta: Dict[str, Any]) -> None:
+    """Safely update the runs index with a new run under an exclusive process lock."""
+    ensure_storage_dirs()
+    lock_file = RUNS_DIR / ".index.lock"
+    import fcntl
+    import tempfile
+    
+    with open(lock_file, "w") as lock_f:
+        try:
+            fcntl.flock(lock_f, fcntl.LOCK_EX)
+            runs = []
+            if INDEX_FILE.exists():
+                try:
+                    with open(INDEX_FILE, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        runs = data.get("runs", [])
+                except json.JSONDecodeError as e:
+                    raise CorruptIndexError(f"Corrupt runs index at {INDEX_FILE}: {e}") from e
+                except Exception as e:
+                    raise RuntimeError(f"Failed to read runs index file at {INDEX_FILE}: {e}") from e
+
+            # Filter out existing entry with same run_id and prepend newest
+            runs = [r for r in runs if r.get("run_id") != meta.get("run_id")]
+            runs.insert(0, meta)
+
+            with tempfile.NamedTemporaryFile("w", dir=str(RUNS_DIR), delete=False, encoding="utf-8") as tmp_f:
+                tmp_path = Path(tmp_f.name)
+                json.dump({"runs": runs, "updated_at": datetime.now(timezone.utc).isoformat()}, tmp_f, indent=2)
+            os.replace(tmp_path, INDEX_FILE)
+        finally:
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
+
 
 
 def persist_run(
@@ -127,13 +197,20 @@ def persist_run(
         }
         with open(ANCHORS_DIR / f"{run_id}.anchor.json", "w", encoding="utf-8") as f:
             json.dump(anchor_data, f, indent=2)
-    except Exception:
-        pass
+        meta["trust_anchor_status"] = "COMMITTED"
+    except Exception as e:
+        meta["trust_anchor_status"] = "PERSISTENCE_FAILED"
+        meta["trust_anchor_error"] = str(e)
+        with open(run_dir / "meta.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        raise IOError(f"Failed to persist trust anchor commitment for run {run_id}: {e}") from e
 
-    # Update global index (prepend newest)
-    index_runs = [r for r in load_runs_index() if r.get("run_id") != run_id]
-    index_runs.insert(0, meta)
-    save_runs_index(index_runs)
+    # Update meta.json with confirmed status
+    with open(run_dir / "meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+    # Update global index atomically under lock (prepend newest)
+    update_runs_index(meta)
 
     # Maintain root output/ for backwards compatibility with CLI
     try:

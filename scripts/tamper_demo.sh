@@ -124,4 +124,23 @@ echo "Internal hash-chain verification alone passes because the mathematical"
 echo "links are self-consistent. To detect a full-chain rewrite, the system"
 echo "must compare against a trusted external anchor (e.g. anchor ledger or"
 echo "witness timestamp). BREACHLINE explicitly documents this boundary."
+echo ""
+
+echo "----------------------------------------------------------"
+echo "ATTACK 6: Tail Truncation (Log Truncation Attack)"
+echo "----------------------------------------------------------"
+echo "An attacker cuts off trailing records to hide recent failures."
+ATTACK6="${TMP_DIR}/tamper_truncated.jsonl"
+python3 -c '
+import json
+with open("'"${ORIGINAL_EVIDENCE}"'", "r") as f:
+    recs = [json.loads(line) for line in f]
+# Truncate final record (e.g. negative control failure)
+recs = recs[:-1]
+with open("'"${ATTACK6}"'", "w") as f:
+    for r in recs:
+        f.write(json.dumps(r) + "\n")
+'
+python3 -m src.verifier "${ATTACK6}" --require-anchor || echo "--> ATTACK 6 DETECTED AS EXPECTED: Trust anchor record count mismatch."
 echo "=========================================================="
+

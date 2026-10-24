@@ -17,5 +17,7 @@ output/*.jsonl
 output/*.html
 output/tamper_scratch/
 output/local_sandbox/
-output/fixture_volume_backup/
 !output/.gitkeep
+*.lock
+.index.lock
+

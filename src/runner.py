@@ -25,6 +25,7 @@ import urllib.error
 import urllib.request
 
 from src.boundary_lab import validate_boundary_scenario
+from src.classification import classify_execution_outcome
 from src.evidence import EvidenceRecorder
 from src.local_sandbox import execute_local_os_operation, execute_simulated_role_operation
 from src.models import TestCase
@@ -129,19 +130,27 @@ def wait_for_workers(timeout: int = 6) -> bool:
     return True
 
 
+def get_default_evidence_path() -> Path:
+    from src.storage import OUTPUT_DIR
+    return OUTPUT_DIR / "evidence.jsonl"
+
+
 class TestRunner:
     __test__ = False
 
     def __init__(
         self,
         config_path: str = DEFAULT_CONFIG_PATH,
-        evidence_path: str = DEFAULT_EVIDENCE_PATH,
+        evidence_path: Optional[str] = None,
         run_id: Optional[str] = None,
         executor_override: Optional[Callable[..., Dict[str, Any]]] = None,
         mode: str = "auto",  # 'auto', 'docker', 'local_os', 'simulated', 'demo'
     ):
         self.config_path = Path(config_path)
-        self.evidence_path = Path(evidence_path)
+        if evidence_path is None:
+            self.evidence_path = get_default_evidence_path()
+        else:
+            self.evidence_path = Path(evidence_path)
         self.recorder = EvidenceRecorder(str(self.evidence_path), run_id=run_id)
         self.executor_override = executor_override
         self.mode = mode
@@ -255,10 +264,6 @@ class TestRunner:
             execution_error_info = None
 
             if not val_ok:
-                actual_outcome = "ERROR"
-                exit_code = 126
-                execution_error_info = val_err
-                is_exec_err = True
                 res = {"exit_code": 126, "error": val_err, "is_execution_error": True}
             else:
                 # 2. Execute operation according to effective mode
@@ -267,11 +272,25 @@ class TestRunner:
                 elif self.effective_mode == "docker":
                     try:
                         worker_url = get_worker_url(tc.role)
-                        res = execute_remote_worker(worker_url, tc.operation, tc.target_path)
-                    except Exception as e:
+                        res = execute_remote_worker(worker_url, tc.operation, tc.target_path, timeout=5.0)
+                    except urllib.error.URLError as e:
                         res = {
                             "exit_code": 125,
                             "error": f"Worker connection failed: {e}",
+                            "is_unavailable": True,
+                            "is_execution_error": True,
+                        }
+                    except TimeoutError as e:
+                        res = {
+                            "exit_code": 124,
+                            "error": f"Worker execution timed out: {e}",
+                            "is_timeout": True,
+                            "is_execution_error": True,
+                        }
+                    except Exception as e:
+                        res = {
+                            "exit_code": 125,
+                            "error": f"Worker connection error: {e}",
                             "is_execution_error": True,
                         }
                 elif self.effective_mode == "local_os":
@@ -280,14 +299,12 @@ class TestRunner:
                     # Simulated mode
                     res = execute_simulated_role_operation(tc.role, tc.operation, tc.target_path)
 
-                exit_code = res.get("exit_code", 1)
-                is_exec_err = res.get("is_execution_error", False) or exit_code >= 125
+            exit_code = res.get("exit_code", 1) if isinstance(res, dict) else 125
 
             # 3. Policy Evaluation (CRITICAL: Do NOT classify execution errors as successful denials!)
-            if is_exec_err:
-                actual_outcome = "ERROR"
-                policy_result = "FAIL"  # An execution error MUST NEVER be treated as a successful policy denial!
-                execution_error_info = res.get("error", "Execution error occurred")
+            actual_outcome, policy_result, execution_error_info = classify_execution_outcome(res, tc.expected_outcome)
+
+            if actual_outcome in ("ERROR", "TIMEOUT", "UNAVAILABLE"):
                 summary["execution_errors_count"] += 1
                 summary["execution_errors"].append({
                     "test_id": tc.test_id,
@@ -295,14 +312,9 @@ class TestRunner:
                     "operation": tc.operation,
                     "target_path": tc.target_path,
                     "exit_code": exit_code,
+                    "outcome": actual_outcome,
                     "error": execution_error_info,
                 })
-            else:
-                # Genuine OS DAC outcome mapping:
-                # exit_code == 0: Operating system allowed operation -> ALLOW
-                # exit_code != 0: Operating system denied operation -> DENY
-                actual_outcome = "ALLOW" if exit_code == 0 else "DENY"
-                policy_result = "PASS" if actual_outcome == tc.expected_outcome else "FAIL"
 
             if policy_result == "PASS":
                 summary["passed"] += 1

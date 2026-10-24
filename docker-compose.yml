@@ -9,11 +9,12 @@ services:
       - breachline-fixture-vol:/data
     command: >
       sh -c "
-        rm -rf /data/* &&
-        mkdir -p /data/red /data/blue /data/leaky &&
+        mkdir -p /data/red /data/blue /data/leaky /data/shared /data/restricted &&
         cp /fixtures/red/red_secret.txt /data/red/ &&
         cp /fixtures/blue/blue_secret.txt /data/blue/ &&
         cp /fixtures/leaky/blue_leaked.txt /data/leaky/ &&
+        [ -f /fixtures/shared/dataset.csv ] && cp /fixtures/shared/dataset.csv /data/shared/ || echo 'test_id,metric,value\nT1,isolation,passed\nT4,misconfiguration,detected\n' > /data/shared/dataset.csv &&
+        [ -f /fixtures/restricted/blocked_by_os.txt ] && cp /fixtures/restricted/blocked_by_os.txt /data/restricted/ || echo 'SECRET_BLOCKED_BY_KERNEL_DAC_MODE_0000\n' > /data/restricted/blocked_by_os.txt &&
         chown -R 1001:1001 /data/red &&
         chmod 700 /data/red &&
         chmod 600 /data/red/red_secret.txt &&
@@ -23,7 +24,11 @@ services:
         chown -R 1002:1002 /data/leaky &&
         chmod 755 /data/leaky &&
         chmod 644 /data/leaky/blue_leaked.txt &&
-        echo 'Fixtures successfully initialized with POSIX DAC permissions.'
+        chmod 755 /data/shared &&
+        chmod 644 /data/shared/dataset.csv &&
+        chmod 700 /data/restricted &&
+        chmod 000 /data/restricted/blocked_by_os.txt &&
+        echo 'Fixtures idempotently synchronized with POSIX DAC permissions.'
       "
 
   red-worker:
@@ -36,7 +41,7 @@ services:
       fixture-init:
         condition: service_completed_successfully
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     user: "1001:1001"
     read_only: true
     cap_drop:
@@ -47,6 +52,12 @@ services:
       - breachline-fixture-vol:/data:ro
     tmpfs:
       - /tmp
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=1)"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 2s
     restart: unless-stopped
 
   blue-worker:
@@ -59,7 +70,7 @@ services:
       fixture-init:
         condition: service_completed_successfully
     ports:
-      - "8082:8080"
+      - "127.0.0.1:8082:8080"
     user: "1002:1002"
     read_only: true
     cap_drop:
@@ -70,6 +81,12 @@ services:
       - breachline-fixture-vol:/data:ro
     tmpfs:
       - /tmp
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=1)"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 2s
     restart: unless-stopped
 
   test-runner:
@@ -80,9 +97,9 @@ services:
     container_name: breachline-test-runner
     depends_on:
       red-worker:
-        condition: service_started
+        condition: service_healthy
       blue-worker:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./output:/app/output
       - ./config:/app/config:ro

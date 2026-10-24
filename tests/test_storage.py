@@ -121,3 +121,68 @@ def test_run_comparison_drift_detection():
     assert t4_diff["status_change"] == "OUTCOME_CHANGED"
     assert t4_diff["run_a"]["result"] == "FAIL"
     assert t4_diff["run_b"]["result"] == "PASS"
+
+
+def test_corrupt_index_raises_corrupt_index_error_fails_closed():
+    """Verify that corrupt index.json raises CorruptIndexError rather than silently wiping history."""
+    from src.storage import CorruptIndexError, INDEX_FILE
+
+    # Write corrupt JSON to index
+    INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(INDEX_FILE, "w", encoding="utf-8") as f:
+        f.write("{ invalid json corrupted by disk failure or bad write ...")
+
+    with pytest.raises(CorruptIndexError):
+        load_runs_index()
+
+
+def test_concurrent_runs_isolated_and_indexed_safely():
+    """Verify concurrent runs do not cross-contaminate evidence records or corrupt the index."""
+    from concurrent.futures import ThreadPoolExecutor
+    from src.storage import get_run
+
+    num_threads = 6
+    run_ids = [f"concurrent-run-{i}" for i in range(num_threads)]
+
+    def persist_worker(idx: int):
+        rid = run_ids[idx]
+        records = [
+            {
+                "schema_version": "1.0.0",
+                "run_id": rid,
+                "sequence_number": 1,
+                "timestamp_utc": "2026-10-24T00:00:00Z",
+                "test_id": f"T{idx}",
+                "test_description": f"Worker {idx} execution",
+                "role": "red-worker",
+                "operation": f"file:read /data/file_{idx}.txt",
+                "expected_outcome": "ALLOW",
+                "actual_outcome": "ALLOW",
+                "result": "PASS",
+                "exit_code": 0,
+                "previous_record_hash": "0" * 64,
+                "record_hash": "a" * 64,
+            }
+        ]
+        test_cases = [{"test_id": f"T{idx}", "role": "red-worker", "operation": f"file:read /data/file_{idx}.txt", "expected_outcome": "ALLOW"}]
+        summary = {"total": 1, "passed": 1, "failed": 0}
+        persist_run(rid, test_cases, records, summary, execution_mode="local_sandbox")
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        list(executor.map(persist_worker, range(num_threads)))
+
+    # 1. Verify index contains all 6 runs
+    runs = load_runs_index()
+    indexed_rids = {r["run_id"] for r in runs}
+    for rid in run_ids:
+        assert rid in indexed_rids
+
+    # 2. Verify evidence isolation: each run only contains its own records
+    for idx, rid in enumerate(run_ids):
+        run_data = get_run(rid)
+        assert run_data is not None
+        assert run_data["meta"]["run_id"] == rid
+        assert len(run_data["records"]) == 1
+        assert run_data["records"][0]["run_id"] == rid
+        assert run_data["records"][0]["test_id"] == f"T{idx}"
+

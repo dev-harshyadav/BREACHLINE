@@ -208,3 +208,105 @@ def test_trust_anchor_detects_full_chain_rewrite(clean_evidence_file):
     assert anchored_res.error_type == "TRUST_ANCHOR_MISMATCH"
     assert anchored_res.anchor_verified is False
 
+
+def test_trust_anchor_detects_tail_truncation_record_count_mismatch(clean_evidence_file):
+    """Verify that an anchor with expected total_records detects tail truncation even if tip is falsified."""
+    with open(clean_evidence_file, "r") as f:
+        records = [json.loads(line) for line in f]
+
+    orig_tip = records[-1]["record_hash"]
+    total = len(records)
+
+    # Truncate the last record
+    truncated = records[:-1]
+    with open(clean_evidence_file, "w") as f:
+        for r in truncated:
+            f.write(json.dumps(r) + "\n")
+
+    # Anchor expecting 4 records encounters 3 records -> must fail closed
+    res = EvidenceVerifier.verify_file(
+        clean_evidence_file,
+        anchor_data={"tip_record_hash": orig_tip, "total_records": total}
+    )
+    assert res.is_valid is False
+    assert res.error_type == "ANCHOR_RECORD_COUNT_MISMATCH"
+    assert res.anchor_status == "ANCHOR_RECORD_COUNT_MISMATCH"
+    assert res.anchor_verified is False
+
+
+def test_trust_anchor_missing_when_required_fails_closed(clean_evidence_file):
+    """If require_anchor is True and no anchor is provided, must fail closed."""
+    res = EvidenceVerifier.verify_file(clean_evidence_file, anchor_data=None, require_anchor=True)
+    assert res.is_valid is False
+    assert res.error_type == "ANCHOR_MISSING"
+    assert res.anchor_status == "ANCHOR_MISSING"
+    assert res.anchor_verified is False
+
+
+def test_trust_anchor_malformed_fails_closed(clean_evidence_file):
+    """An anchor missing required fields (tip_record_hash or total_records) is malformed and fails closed."""
+    res = EvidenceVerifier.verify_file(
+        clean_evidence_file,
+        anchor_data={"some_invalid_key": "xyz"},
+        require_anchor=True
+    )
+    assert res.is_valid is False
+    assert res.error_type == "ANCHOR_MALFORMED"
+    assert res.anchor_status == "ANCHOR_MALFORMED"
+    assert res.anchor_verified is False
+
+
+def test_trust_anchor_persistence_failed_flag_fails_closed(clean_evidence_file):
+    """An anchor marked with anchor_persistence_failed must fail closed."""
+    res = EvidenceVerifier.verify_file(
+        clean_evidence_file,
+        anchor_data={"anchor_persistence_failed": True, "error": "Disk full"},
+        require_anchor=True
+    )
+    assert res.is_valid is False
+    assert res.error_type == "ANCHOR_PERSISTENCE_FAILED"
+    assert res.anchor_status == "ANCHOR_PERSISTENCE_FAILED"
+    assert res.anchor_verified is False
+
+
+def test_trust_anchor_read_error_fails_closed(clean_evidence_file):
+    """An anchor marked with read_error must fail closed."""
+    res = EvidenceVerifier.verify_file(
+        clean_evidence_file,
+        anchor_data={"read_error": True, "error": "Permission denied reading anchor"},
+        require_anchor=True
+    )
+    assert res.is_valid is False
+    assert res.error_type == "ANCHOR_READ_ERROR"
+    assert res.anchor_status == "ANCHOR_READ_ERROR"
+    assert res.anchor_verified is False
+
+
+def test_unanchored_evidence_never_claims_anchored(clean_evidence_file):
+    """An unanchored valid evidence file has status INTERNAL_CHAIN_VALID_NO_ANCHOR and anchor_verified is None."""
+    res = EvidenceVerifier.verify_file(clean_evidence_file, anchor_data=None, require_anchor=False)
+    assert res.is_valid is True
+    assert res.anchor_verified is None
+    assert res.anchor_status == "INTERNAL_CHAIN_VALID_NO_ANCHOR"
+
+
+def test_historical_schema_1_0_0_evidence_compatibility(tmp_path):
+    """Ensure verifier correctly validates existing schema 1.0.0 historical evidence files."""
+    run_id = "historical-run-v1"
+    ev_path = tmp_path / "historical_evidence.jsonl"
+    recorder = EvidenceRecorder(str(ev_path), run_id=run_id)
+    r1 = recorder.record_test("T1", "Historical test 1", "red-worker", "file:read /data/red.txt", "ALLOW", "ALLOW", "PASS", 0)
+    r2 = recorder.record_test("T2", "Historical test 2", "blue-worker", "file:read /data/blue.txt", "DENY", "DENY", "PASS", 1)
+
+    # Verify that schema_version is "1.0.0"
+    with open(ev_path, "r") as f:
+        lines = [json.loads(l) for l in f]
+    assert all(l["schema_version"] == "1.0.0" for l in lines)
+
+    # Verifier must validate schema 1.0.0 successfully
+    res = EvidenceVerifier.verify_file(str(ev_path))
+    assert res.is_valid is True
+    assert res.total_records == 2
+    assert res.error_type is None
+
+

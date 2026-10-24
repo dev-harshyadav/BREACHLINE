@@ -11,6 +11,16 @@ let state = {
   labSchema: null,
 };
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
@@ -325,14 +335,21 @@ function renderOverviewResults(runData) {
     const isUnexpected = r.expected_outcome === 'DENY' && r.actual_outcome === 'ALLOW';
     const noteBadge = isUnexpected ? '<span class="badge badge-warn">UNEXPECTED ACCESS</span>' : '<span class="text-muted">Expected</span>';
 
+    const testId = escapeHtml(r.test_id);
+    const desc = escapeHtml(r.test_description);
+    const role = escapeHtml(r.role);
+    const op = escapeHtml(r.operation);
+    const exp = escapeHtml(r.expected_outcome);
+    const act = escapeHtml(r.actual_outcome);
+
     html += `
       <tr>
-        <td class="mono font-bold">${r.test_id}</td>
-        <td>${r.test_description}</td>
-        <td class="mono text-cyan">${r.role}</td>
-        <td class="mono" style="font-size:0.8rem;">${r.operation}</td>
-        <td><span class="mono pill-${r.expected_outcome.toLowerCase()}">${r.expected_outcome}</span></td>
-        <td><span class="mono pill-${r.actual_outcome.toLowerCase()}">${r.actual_outcome}</span></td>
+        <td class="mono font-bold">${testId}</td>
+        <td>${desc}</td>
+        <td class="mono text-cyan">${role}</td>
+        <td class="mono" style="font-size:0.8rem;">${op}</td>
+        <td><span class="mono pill-${exp.toLowerCase()}">${exp}</span></td>
+        <td><span class="mono pill-${act.toLowerCase()}">${act}</span></td>
         <td>${resBadge}</td>
         <td>${noteBadge}</td>
       </tr>
@@ -345,6 +362,7 @@ function renderOverviewResults(runData) {
   const verif = meta.evidence_integrity || {};
   const isValid = verif.is_valid;
   const isAnchored = meta.anchored || (meta.trust_anchor && meta.trust_anchor.anchored);
+  const runIdEsc = escapeHtml(meta.run_id || 'N/A');
   const statusHtml = `
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <div>
@@ -352,14 +370,14 @@ function renderOverviewResults(runData) {
         <span style="color:var(--text-muted); margin-left:1rem;">Verified ${verif.total_records || 0} Records</span>
         ${isAnchored ? '<span class="badge badge-pass" style="margin-left:0.75rem;">TRUST ANCHOR VERIFIED</span>' : ''}
       </div>
-      <div class="mono text-cyan" style="font-size:0.75rem;">Run ID: ${meta.run_id || 'N/A'}</div>
+      <div class="mono text-cyan" style="font-size:0.75rem;">Run ID: ${runIdEsc}</div>
     </div>
   `;
   document.getElementById('overview-verification-box').innerHTML = statusHtml;
 
   // Badges in Card Header
   document.getElementById('latest-run-badges').innerHTML = `
-    <span class="badge badge-info">Mode: ${meta.execution_mode || 'auto'}</span>
+    <span class="badge badge-info">Mode: ${escapeHtml(meta.execution_mode || 'auto')}</span>
     <span class="badge ${isValid ? 'badge-pass' : 'badge-fail'}">Chain: ${isValid ? 'VALID' : 'INVALID'}</span>
     ${isAnchored ? '<span class="badge badge-pass">Anchored</span>' : ''}
   `;
@@ -374,14 +392,20 @@ function renderScenariosTable(configList) {
   let html = '';
   configList.forEach(tc => {
     const isNeg = tc.is_negative_control || tc.test_id === 'T4';
+    const testId = escapeHtml(tc.test_id);
+    const role = escapeHtml(tc.role);
+    const path = escapeHtml(tc.target_path);
+    const exp = escapeHtml(tc.expected_outcome);
+    const desc = escapeHtml(tc.test_description);
+
     html += `
       <tr>
-        <td class="mono font-bold">${tc.test_id}</td>
-        <td class="mono text-cyan">${tc.role}</td>
-        <td class="mono" style="font-size:0.8rem;">${tc.target_path}</td>
-        <td><span class="mono pill-${tc.expected_outcome.toLowerCase()}">${tc.expected_outcome}</span></td>
+        <td class="mono font-bold">${testId}</td>
+        <td class="mono text-cyan">${role}</td>
+        <td class="mono" style="font-size:0.8rem;">${path}</td>
+        <td><span class="mono pill-${exp.toLowerCase()}">${exp}</span></td>
         <td>${isNeg ? '<span class="badge badge-warn">NEGATIVE CONTROL</span>' : '<span class="text-muted">Standard</span>'}</td>
-        <td style="font-size:0.85rem; color:var(--text-secondary);">${tc.test_description}</td>
+        <td style="font-size:0.85rem; color:var(--text-secondary);">${desc}</td>
       </tr>
     `;
   });
@@ -656,29 +680,40 @@ async function renderInspector() {
     let html = '';
     findings.forEach(f => {
       const isNeg = f.is_negative_control;
+      const findingId = escapeHtml(f.finding_id);
+      const runId = escapeHtml(f.run_id ? f.run_id.slice(0, 8) : '');
+      const worker = escapeHtml(f.worker);
+      const res = escapeHtml(f.resource);
+      const op = escapeHtml(f.operation);
+      const exp = escapeHtml(f.expected_outcome);
+      const obs = escapeHtml(f.observed_outcome);
+      const expl = escapeHtml(f.explanation);
+      const interp = escapeHtml(f.interpretation);
+      const step = escapeHtml(f.recommended_next_step);
+
       html += `
         <div class="finding-card ${isNeg ? 'negative-control' : ''}">
           <div class="finding-title">
             <div>
-              <span class="mono font-bold text-red" style="font-size:1.05rem;">${f.finding_id}</span>
+              <span class="mono font-bold text-red" style="font-size:1.05rem;">${findingId}</span>
               <span class="badge ${isNeg ? 'badge-warn' : 'badge-fail'}" style="margin-left:0.5rem;">
                 ${isNeg ? 'DELIBERATE NEGATIVE CONTROL' : 'POLICY VIOLATION'}
               </span>
             </div>
-            <span class="mono text-muted" style="font-size:0.8rem;">Run: ${f.run_id.slice(0, 8)}</span>
+            <span class="mono text-muted" style="font-size:0.8rem;">Run: ${runId}</span>
           </div>
 
           <div class="finding-grid">
-            <div><strong>Worker:</strong> <span class="mono text-cyan">${f.worker}</span></div>
-            <div><strong>Target Resource:</strong> <span class="mono">${f.resource}</span></div>
-            <div><strong>Operation:</strong> <span class="mono">${f.operation}</span></div>
-            <div><strong>Expected vs Observed:</strong> <span class="mono pill-deny">${f.expected_outcome}</span> &rarr; <span class="mono pill-allow">${f.observed_outcome}</span></div>
+            <div><strong>Worker:</strong> <span class="mono text-cyan">${worker}</span></div>
+            <div><strong>Target Resource:</strong> <span class="mono">${res}</span></div>
+            <div><strong>Operation:</strong> <span class="mono">${op}</span></div>
+            <div><strong>Expected vs Observed:</strong> <span class="mono pill-deny">${exp}</span> &rarr; <span class="mono pill-allow">${obs}</span></div>
           </div>
 
           <div style="font-size:0.88rem; line-height:1.6;">
-            <div><strong>Technical Explanation:</strong> <span class="text-secondary">${f.explanation}</span></div>
-            <div><strong>Security Interpretation:</strong> <span class="text-secondary">${f.interpretation}</span></div>
-            <div style="margin-top:0.35rem;"><strong>Recommended Next Step:</strong> <span class="text-amber">${f.recommended_next_step}</span></div>
+            <div><strong>Technical Explanation:</strong> <span class="text-secondary">${expl}</span></div>
+            <div><strong>Security Interpretation:</strong> <span class="text-secondary">${interp}</span></div>
+            <div style="margin-top:0.35rem;"><strong>Recommended Next Step:</strong> <span class="text-amber">${step}</span></div>
           </div>
         </div>
       `;
@@ -702,18 +737,27 @@ function renderVaultAndVerification() {
 
   let html = '';
   records.forEach((r, idx) => {
-    const prevShort = r.previous_record_hash.slice(0, 10) + '...';
-    const recShort = r.record_hash.slice(0, 10) + '...';
+    const prevShort = escapeHtml(r.previous_record_hash.slice(0, 10) + '...');
+    const recShort = escapeHtml(r.record_hash.slice(0, 10) + '...');
+    const seq = escapeHtml(r.sequence_number);
+    const testId = escapeHtml(r.test_id);
+    const role = escapeHtml(r.role);
+    const op = escapeHtml(r.operation);
+    const act = escapeHtml(r.actual_outcome);
+    const res = escapeHtml(r.result);
+    const prevFull = escapeHtml(r.previous_record_hash);
+    const recFull = escapeHtml(r.record_hash);
+
     html += `
       <tr style="cursor:pointer;" onclick="inspectRecord(${idx})">
-        <td class="mono font-bold">${r.sequence_number}</td>
-        <td class="mono text-cyan">${r.test_id}</td>
-        <td class="mono">${r.role}</td>
-        <td class="mono" style="font-size:0.8rem;">${r.operation}</td>
-        <td><span class="mono pill-${r.actual_outcome.toLowerCase()}">${r.actual_outcome}</span></td>
-        <td><span class="badge ${r.result === 'PASS' ? 'badge-pass' : 'badge-fail'}">${r.result}</span></td>
-        <td class="mono text-muted" title="${r.previous_record_hash}">${prevShort}</td>
-        <td class="mono font-bold text-cyan" title="${r.record_hash}">${recShort}</td>
+        <td class="mono font-bold">${seq}</td>
+        <td class="mono text-cyan">${testId}</td>
+        <td class="mono">${role}</td>
+        <td class="mono" style="font-size:0.8rem;">${op}</td>
+        <td><span class="mono pill-${act.toLowerCase()}">${act}</span></td>
+        <td><span class="badge ${r.result === 'PASS' ? 'badge-pass' : 'badge-fail'}">${res}</span></td>
+        <td class="mono text-muted" title="${prevFull}">${prevShort}</td>
+        <td class="mono font-bold text-cyan" title="${recFull}">${recShort}</td>
       </tr>
     `;
   });
@@ -833,6 +877,7 @@ async function runTamperAttack(attackId) {
     experiments.forEach(exp => {
       const isDetected = exp.detected_as_tampered;
       const isRewriteLimitation = exp.attack_id === 'ATTACK_5';
+      const isTailTruncation = exp.attack_id === 'ATTACK_6';
 
       let statusBadge = '';
       if (isDetected) {
@@ -843,51 +888,61 @@ async function runTamperAttack(attackId) {
         statusBadge = '<span class="badge badge-fail">UNDETECTED</span>';
       }
 
+      const attackId = escapeHtml(exp.attack_id);
+      const attackName = escapeHtml(exp.attack_name);
+      const attackDesc = escapeHtml(exp.attack_description);
+      const transApplied = escapeHtml(exp.transformation_applied);
+      const errMsg = escapeHtml(exp.verifier_result?.error_message || '');
+      const expl = escapeHtml(exp.explanation);
+      const archNote = escapeHtml(exp.architectural_note);
+      const anchorProv = escapeHtml(exp.anchor_provenance || 'COMMITTED');
+
       html += `
         <div class="card" style="border-left: 4px solid ${isDetected ? 'var(--green-pass)' : (isRewriteLimitation ? 'var(--amber-warn)' : 'var(--red-fail)')}; margin-top:1.25rem;">
           <div class="card-header">
             <div>
-              <span class="mono font-bold text-cyan" style="font-size:1.05rem;">${exp.attack_id}: ${exp.attack_name}</span>
+              <span class="mono font-bold text-cyan" style="font-size:1.05rem;">${attackId}: ${attackName}</span>
               <span style="margin-left:0.5rem;">${statusBadge}</span>
+              <span class="badge badge-info" style="margin-left:0.35rem; font-size:0.7rem;">Anchor: ${anchorProv}</span>
             </div>
             <span class="mono text-muted" style="font-size:0.75rem;">Disposable Copy</span>
           </div>
 
-          <p style="color:var(--text-secondary); margin-bottom:0.75rem;">${exp.attack_description}</p>
+          <p style="color:var(--text-secondary); margin-bottom:0.75rem;">${attackDesc}</p>
           
           <div style="background:var(--bg-input); padding:0.85rem; border-radius:var(--radius-sm); margin-bottom:0.75rem; font-size:0.85rem;">
-            <div><strong>Transformation:</strong> <span class="mono text-red">${exp.transformation_applied}</span></div>
-            <div><strong>Internal Chain Integrity:</strong> <span class="mono ${exp.verifier_result.is_valid ? 'text-amber font-bold' : 'text-green'}">${exp.verifier_result.is_valid ? 'VALID (Self-Consistent Hash Chain Recomputed)' : 'INVALID (Link or Hash Broken)'}</span></div>
-            ${exp.verifier_result.error_message ? `<div><strong>Error Detected:</strong> <span class="mono text-red">${exp.verifier_result.error_message}</span></div>` : ''}
+            <div><strong>Transformation:</strong> <span class="mono text-red">${transApplied}</span></div>
+            <div><strong>Internal Chain Integrity:</strong> <span class="mono ${exp.verifier_result?.is_valid ? 'text-amber font-bold' : 'text-green'}">${exp.verifier_result?.is_valid ? 'VALID (Self-Consistent Hash Chain Recomputed)' : 'INVALID (Link or Hash Broken)'}</span></div>
+            ${errMsg ? `<div><strong>Error Detected:</strong> <span class="mono text-red">${errMsg}</span></div>` : ''}
           </div>
 
           ${exp.trust_anchor_check ? `
             <div style="margin-bottom:0.75rem; padding:0.75rem; border-radius:var(--radius-sm); background:rgba(6, 182, 212, 0.1); border:1px solid var(--accent-cyan); font-size:0.85rem;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <strong>Independent Trust Anchor Defense:</strong>
-                <span class="badge ${exp.trust_anchor_check.detected_by_trust_anchor ? 'badge-pass' : 'badge-warn'}">
-                  ${exp.trust_anchor_check.detected_by_trust_anchor ? 'REWRITE DETECTED BY ANCHOR' : exp.trust_anchor_check.trust_anchor_status}
+                <span class="badge ${exp.trust_anchor_check.anchor_detected_tampering ? 'badge-pass' : 'badge-warn'}">
+                  ${exp.trust_anchor_check.anchor_detected_tampering ? 'CAUGHT BY INDEPENDENT ANCHOR' : 'ANCHOR CHECK PASSED'}
                 </span>
               </div>
               <div class="text-secondary" style="margin-top:0.4rem; font-size:0.82rem;">
-                ${exp.trust_anchor_check.error || 'External commitment matches.'}
+                ${escapeHtml(exp.trust_anchor_check.anchor_error_message || 'External commitment matches.')}
               </div>
               <div class="mono" style="font-size:0.75rem; color:var(--text-muted); margin-top:0.35rem;">
-                Stored Anchor Tip: <span class="text-cyan">${exp.trust_anchor_check.stored_tip_hash?.slice(0, 20)}...</span> | Rewritten Tip: <span class="text-red">${exp.trust_anchor_check.tampered_tip_hash?.slice(0, 20)}...</span>
+                Stored Anchor Tip: <span class="text-cyan">${escapeHtml(exp.trust_anchor_check.anchor_expected_tip?.slice(0, 20))}...</span> | Observed Tip: <span class="text-red">${escapeHtml(exp.trust_anchor_check.tampered_chain_tip?.slice(0, 20))}...</span>
               </div>
             </div>
           ` : ''}
 
           <div style="font-size:0.88rem; line-height:1.6;">
-            <div><strong>Cryptographic Explanation:</strong> <span class="text-secondary">${exp.explanation}</span></div>
-            <div style="margin-top:0.35rem;"><strong>Architectural Takeaway:</strong> <span class="text-cyan">${exp.architectural_note}</span></div>
+            <div><strong>Cryptographic Explanation:</strong> <span class="text-secondary">${expl}</span></div>
+            <div style="margin-top:0.35rem;"><strong>Architectural Takeaway:</strong> <span class="text-cyan">${archNote}</span></div>
           </div>
         </div>
       `;
     });
     container.innerHTML = html;
   } catch (err) {
-    container.innerHTML = `<div class="text-red">Error running tampering experiment: ${err.message}</div>`;
+    container.innerHTML = `<div class="text-red">Error running tampering experiment: ${escapeHtml(err.message)}</div>`;
   }
 }
 

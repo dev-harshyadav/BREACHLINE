@@ -7,6 +7,7 @@ Parses evidence logs, executes independent verification, and outputs:
 """
 
 from datetime import datetime, timezone
+import html
 import json
 import os
 from pathlib import Path
@@ -36,24 +37,33 @@ def render_html_report(data: Dict[str, Any]) -> str:
 
     test_rows = ""
     for r in data["test_results"]:
-        res_badge = '<span class="status-pass">PASS</span>' if r["result"] == "PASS" else '<span class="status-fail">FAIL</span>'
-        expected_badge = f'<span class="code-pill">{r["expected"]}</span>'
-        actual_badge = f'<span class="code-pill {r["actual"].lower()}">{r["actual"]}</span>'
-        hash_short = f"{r['record_hash'][:16]}...{r['record_hash'][-8:]}"
+        test_id_esc = html.escape(str(r["test_id"]))
+        desc_esc = html.escape(str(r["description"]))
+        role_esc = html.escape(str(r["role"]))
+        op_esc = html.escape(str(r["operation"]))
+        exp_esc = html.escape(str(r["expected"]))
+        act_esc = html.escape(str(r["actual"]))
+        res_esc = html.escape(str(r["result"]))
+        hash_esc = html.escape(str(r["record_hash"]))
+
+        res_badge = f'<span class="status-pass">{res_esc}</span>' if r["result"] == "PASS" else f'<span class="status-fail">{res_esc}</span>'
+        expected_badge = f'<span class="code-pill">{exp_esc}</span>'
+        actual_badge = f'<span class="code-pill {act_esc.lower()}">{act_esc}</span>'
+        hash_short = f"{hash_esc[:16]}...{hash_esc[-8:]}"
         test_rows += f"""
         <tr>
-            <td class="mono font-bold">{r["test_id"]}</td>
-            <td>{r["description"]}</td>
-            <td class="mono text-cyan">{r["role"]}</td>
-            <td class="mono">{r["operation"]}</td>
+            <td class="mono font-bold">{test_id_esc}</td>
+            <td>{desc_esc}</td>
+            <td class="mono text-cyan">{role_esc}</td>
+            <td class="mono">{op_esc}</td>
             <td>{expected_badge}</td>
             <td>{actual_badge}</td>
             <td>{res_badge}</td>
-            <td class="mono text-muted" title="{r['record_hash']}">{hash_short}</td>
+            <td class="mono text-muted" title="{hash_esc}">{hash_short}</td>
         </tr>
         """
 
-    limitations_list = "".join(f"<li>{lim}</li>" for lim in data["known_limitations"])
+    limitations_list = "".join(f"<li>{html.escape(lim)}</li>" for lim in data["known_limitations"])
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -358,14 +368,23 @@ def render_html_report(data: Dict[str, Any]) -> str:
 
 
 def generate_report(
-    evidence_path: str = DEFAULT_EVIDENCE_PATH,
-    report_json_path: str = DEFAULT_REPORT_JSON_PATH,
-    report_txt_path: str = DEFAULT_REPORT_TXT_PATH,
-    report_html_path: str = DEFAULT_REPORT_HTML_PATH,
+    evidence_path: Optional[str] = None,
+    report_json_path: Optional[str] = None,
+    report_txt_path: Optional[str] = None,
+    report_html_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    ev_path = Path(evidence_path)
+    from src.storage import OUTPUT_DIR
+    ev_path = Path(evidence_path) if evidence_path else OUTPUT_DIR / "evidence.jsonl"
+    r_json_path = Path(report_json_path) if report_json_path else OUTPUT_DIR / "report.json"
+    r_txt_path = Path(report_txt_path) if report_txt_path else OUTPUT_DIR / "report.txt"
+    r_html_path = Path(report_html_path) if report_html_path else OUTPUT_DIR / "report.html"
+
+    report_json_path = str(r_json_path)
+    report_txt_path = str(r_txt_path)
+    report_html_path = str(r_html_path)
+
     if not ev_path.exists():
-        raise FileNotFoundError(f"Evidence file does not exist: {evidence_path}")
+        raise FileNotFoundError(f"Evidence file does not exist: {ev_path}")
 
     # Read all records
     records: List[Dict[str, Any]] = []
@@ -461,13 +480,21 @@ def generate_report(
             f"{r['expected_outcome']:<8} | {r['actual_outcome']:<8} | {r['result']:<6} | {r['operation']}"
         )
 
+    has_negative_control = any(
+        r.get("is_negative_control", False) or (r.get("test_id") == "T4" and r.get("expected_outcome") == "DENY" and r.get("actual_outcome") == "ALLOW")
+        for r in records
+    )
+    if has_negative_control:
+        txt_lines.extend([
+            "-" * 78,
+            " NEGATIVE CONTROL ANALYSIS:",
+            " - Scenario T4 serves as an intentional negative control testing a misconfigured fixture.",
+            " - Policy expected 'DENY', but observed outcome was 'ALLOW' on world-readable fixture (mode 0644).",
+            " - Test harness correctly recorded observed access and failed the test case (Policy FAIL).",
+            " - Cryptographic evidence chain remains VALID because all recorded operations were sealed honestly.",
+        ])
+
     txt_lines.extend([
-        "-" * 78,
-        " NEGATIVE CONTROL ANALYSIS:",
-        " - Test T4 is a deliberate negative control testing a misconfigured fixture.",
-        " - Policy expects 'DENY', but actual environment allowed 'ALLOW'.",
-        " - Test harness correctly flagged result as 'FAIL'. This confirms the harness",
-        "   detects boundary misconfigurations rather than falsely passing them.",
         "-" * 78,
         " KNOWN LIMITATIONS & SECURITY SCOPE:",
     ])
